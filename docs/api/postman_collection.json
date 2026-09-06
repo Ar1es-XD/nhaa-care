@@ -1,0 +1,28 @@
+{
+  "info": {
+    "name": "NHAA-Care API v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/health" }
+    },
+    {
+      "name": "Process Interaction Turn",
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/interactions/process-turn" }
+    },
+    {
+      "name": "Get Triage Queue",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/triage/queue" }
+    },
+    {
+      "name": "Verify and Dispatch",
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/triage/verify-and-dispatch" }
+    },
+    {
+      "name": "Emergency Break-Glass",
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/break-glass/request-unmasking" }
+    }
+  ]
+}
