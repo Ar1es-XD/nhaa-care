@@ -1,0 +1,9 @@
+[
+  {"state_code": "UP", "state_name": "Uttar Pradesh", "district_code": "UP_LKO", "district_name": "Lucknow"},
+  {"state_code": "UP", "state_name": "Uttar Pradesh", "district_code": "UP_VNS", "district_name": "Varanasi"},
+  {"state_code": "MH", "state_name": "Maharashtra", "district_code": "MH_NGP", "district_name": "Nagpur"},
+  {"state_code": "MH", "state_name": "Maharashtra", "district_code": "MH_PUN", "district_name": "Pune"},
+  {"state_code": "RJ", "state_name": "Rajasthan", "district_code": "RJ_JPR", "district_name": "Jaipur"},
+  {"state_code": "KN", "state_name": "Karnataka", "district_code": "KN_BLR", "district_name": "Bengaluru Urban"},
+  {"state_code": "TN", "state_name": "Tamil Nadu", "district_code": "TN_MDU", "district_name": "Madurai"}
+]
