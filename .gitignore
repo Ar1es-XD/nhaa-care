@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+
+# Environment & OS
+.env
+.env.local
+.DS_Store
+*.pem
+*.key
