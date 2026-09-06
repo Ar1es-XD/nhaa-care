@@ -1,0 +1,15 @@
+@import './kavach-design-tokens.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: var(--surface-cream);
+  color: var(--text-primary);
+  font-family: var(--font-latin);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
