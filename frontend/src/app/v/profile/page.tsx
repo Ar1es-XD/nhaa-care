@@ -29,20 +29,28 @@ export default function VictimProfilePage() {
           </p>
         </div>
 
-        {/* Profile Details */}
+        {/* Profile Details with Dignified Portrait */}
         <div className="p-5 bg-white border border-[#D9D4C8] rounded-xl space-y-4 shadow-sm">
-          <span className="text-xs font-semibold text-[#23303A] block">
-            Registered Care Identity
-          </span>
-          <div className="grid grid-cols-2 gap-4 text-xs">
+          <div className="flex items-center gap-4">
+            <img
+              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
+              alt="Priya Devi"
+              className="w-16 h-16 rounded-full object-cover border-2 border-[#D9D4C8] shadow-sm"
+            />
             <div>
-              <span className="text-[11px] text-[#4E5B72] block">Name</span>
-              <span className="font-medium text-[#23303A]">{user?.name || 'Priya Devi'}</span>
+              <span className="font-serif text-lg font-medium text-[#23303A] block">
+                {user?.name || 'Priya Devi'}
+              </span>
+              <span className="text-xs text-[#4E5B72] block">
+                Case {user?.caseNumber || 'NHAA/2026/UP/00492'} • Varanasi
+              </span>
+              <span className="text-[10px] bg-[#E6EEE8] text-[#5B7A66] px-2 py-0.5 rounded-full font-medium inline-block mt-1">
+                Zero-Knowledge Vault Protected
+              </span>
             </div>
-            <div>
-              <span className="text-[11px] text-[#4E5B72] block">Case Number</span>
-              <span className="font-medium text-[#23303A]">{user?.caseNumber || 'NHAA/2026/UP/00492'}</span>
-            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-xs pt-3 border-t border-[#D9D4C8]">
             <div>
               <span className="text-[11px] text-[#4E5B72] block">Assigned District</span>
               <span className="font-medium text-[#23303A]">{user?.district || 'Varanasi'} District</span>
@@ -54,7 +62,7 @@ export default function VictimProfilePage() {
           </div>
         </div>
 
-        {/* Multilingual Preference (Plex Sans + Plex Devanagari parity) */}
+        {/* Multilingual Preference */}
         <div className="p-5 bg-white border border-[#D9D4C8] rounded-xl space-y-3 shadow-sm">
           <span className="text-xs font-semibold text-[#23303A] block">
             Preferred Language for Check-ins & IVRS Calls
