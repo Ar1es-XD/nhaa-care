@@ -1,0 +1,3 @@
+security:
+  ignore-ids: []
+  continue-on-vulnerability: false
