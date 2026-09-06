@@ -1,6 +1,7 @@
 import React from 'react';
 import '../styles/globals.css';
 import { SanctuaryHeader } from '../components/common/SanctuaryHeader';
+import { AuthProvider } from '../context/AuthContext';
 
 export const metadata = {
   title: 'Sahaara (सहारा) | Safe Space for Healing, Support & Justice',
@@ -11,10 +12,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col justify-between bg-[#faf8f5]">
-        <div>
-          <SanctuaryHeader />
-          <main>{children}</main>
-        </div>
+        <AuthProvider>
+          <div>
+            <SanctuaryHeader />
+            <main>{children}</main>
+          </div>
+        </AuthProvider>
         <footer className="bg-white border-t border-[#e8f0ec] text-xs py-8 mt-12 text-[#52796f]">
           <div className="max-w-6xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
             <div>
