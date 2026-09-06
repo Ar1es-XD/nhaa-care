@@ -4,7 +4,7 @@ from typing import Optional
 class UserClaims(BaseModel):
     user_id: str
     full_name: str
-    email: EmailStr
+    email: str
     role: str
     district_code: Optional[str] = None
     department: str
