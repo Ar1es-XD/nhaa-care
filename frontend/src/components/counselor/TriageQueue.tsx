@@ -6,6 +6,8 @@ import { ClinicalVerificationModal } from './ClinicalVerificationModal';
 
 export const TriageQueue: React.FC = () => {
   const [activeModalId, setActiveModalId] = useState<string | null>(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [clinicalAiSummary, setClinicalAiSummary] = useState<string | null>(null);
 
   const alerts = [
     {
@@ -44,6 +46,51 @@ export const TriageQueue: React.FC = () => {
             </div>
 
             <VerbatimQuoteCard quote={a.verbatim} language={a.language} channel={a.channel} />
+            
+            {/* Real Gemini AI Clinical Insight Generator */}
+            <div className="my-3 p-4 bg-[#f8fbf9] rounded-xl border border-[#c6dfd4] space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>🧠</span>
+                  <span className="text-xs font-bold text-[#2d3748]">Sahaara Clinical Copilot (AI Analysis)</span>
+                </div>
+                <button
+                  onClick={async () => {
+                    setLoadingAi(true);
+                    try {
+                      const res = await fetch('/api/ai/counselor-summary', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          caseId: a.caseNumber,
+                          ddsScore: 84,
+                          velocity: 32,
+                          verbatimQuote: a.verbatim,
+                          milestone: 'Bail Hearing & Witness Deposition',
+                        }),
+                      });
+                      const data = await res.json();
+                      setClinicalAiSummary(data.summary);
+                    } catch (e) {
+                      setClinicalAiSummary('Failed to generate insight.');
+                    } finally {
+                      setLoadingAi(false);
+                    }
+                  }}
+                  disabled={loadingAi}
+                  className="text-xs bg-[#52796f] hover:bg-[#354f52] text-white px-3 py-1.5 rounded-full font-semibold transition shadow-sm disabled:opacity-50"
+                >
+                  {loadingAi ? 'Analyzing Signals...' : '✨ Generate AI Clinical Insight'}
+                </button>
+              </div>
+
+              {clinicalAiSummary && (
+                <div className="text-xs text-[#2d3748] bg-white p-3 rounded-lg border border-[#e8f0ec] leading-relaxed whitespace-pre-line font-medium">
+                  {clinicalAiSummary}
+                </div>
+              )}
+            </div>
+
             <LongitudinalChart />
 
             <div className="mt-4 flex justify-end">
