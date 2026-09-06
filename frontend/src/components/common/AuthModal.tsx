@@ -100,16 +100,16 @@ export const AuthModal: React.FC = () => {
             <div className="grid grid-cols-3 gap-1.5">
               <button
                 onClick={() => {
-                  signInAsRole('citizen');
+                  signInAsRole('victim');
                   setIsOpen(false);
                 }}
                 className={`p-2 rounded-xl text-[11px] font-semibold text-center border transition ${
-                  user?.role === 'citizen'
-                    ? 'bg-[#52796f] text-white border-[#52796f]'
-                    : 'bg-[#faf8f5] text-[#354f52] border-[#e8f0ec] hover:border-[#74a892]'
+                  user?.role === 'victim'
+                    ? 'bg-[#6E8E7A] text-white border-[#6E8E7A]'
+                    : 'bg-[#F6F4EF] text-[#23303A] border-[#D9D4C8] hover:border-[#6E8E7A]'
                 }`}
               >
-                🌸 Citizen
+                🌸 Sahay (Victim)
               </button>
 
               <button

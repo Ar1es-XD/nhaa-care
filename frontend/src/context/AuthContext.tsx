@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
-export type UserRole = 'citizen' | 'counselor' | 'admin' | 'public';
+export type UserRole = 'victim' | 'counselor' | 'admin' | 'nodal_officer' | 'public';
 
 export interface AuthUser {
   id: string;
@@ -11,52 +11,64 @@ export interface AuthUser {
   name: string;
   role: UserRole;
   district: string;
+  caseNumber?: string;
   avatarUrl?: string;
-  provider: 'supabase_google' | 'meripehchan_sso' | 'demo_sso';
+  provider: 'supabase_google' | 'meripehchan_sso' | 'otp_session' | 'demo_sso';
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   isConfigured: boolean;
+  hasCompletedBaseline: boolean;
+  setBaselineCompleted: (completed: boolean) => void;
   signInWithGoogle: () => Promise<void>;
   signInWithMeriPehchan: () => Promise<void>;
+  signInWithPhoneOtp: (phone: string, otp: string, role?: UserRole) => Promise<boolean>;
   signInAsRole: (role: UserRole) => void;
   signOut: () => Promise<void>;
+  saveDraftNote: (caseId: string, note: string) => void;
+  getDraftNote: (caseId: string) => string;
 }
 
 const DEMO_USERS: Record<UserRole, AuthUser> = {
-  citizen: {
-    id: 'usr-cit-001',
-    email: 'priya.devi@sahaara.gov.in',
+  victim: {
+    id: 'usr-v-001',
+    email: 'priya.devi@sahay.gov.in',
     name: 'Priya Devi',
-    role: 'citizen',
+    role: 'victim',
     district: 'Varanasi',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    caseNumber: 'NHAA/2026/UP/VNS/00492',
     provider: 'demo_sso',
   },
   counselor: {
-    id: 'usr-cns-002',
-    email: 'dr.ananya.verma@triage.sahaara.gov.in',
-    name: 'Dr. Ananya Verma (Licensed Clinical Counselor)',
+    id: 'usr-c-002',
+    email: 'dr.ananya.verma@counselor.sahay.gov.in',
+    name: 'Dr. Ananya Verma',
     role: 'counselor',
     district: 'Varanasi',
-    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop&q=80',
     provider: 'meripehchan_sso',
   },
   admin: {
-    id: 'usr-adm-003',
+    id: 'usr-a-003',
     email: 'dm.varanasi@gov.in',
-    name: 'District Magistrate (Varanasi)',
+    name: 'District Magistrate, Varanasi',
     role: 'admin',
     district: 'Varanasi',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
+    provider: 'meripehchan_sso',
+  },
+  nodal_officer: {
+    id: 'usr-no-004',
+    email: 'nodal.sp.varanasi@police.gov.in',
+    name: 'Superintendent of Police (Nodal)',
+    role: 'nodal_officer',
+    district: 'Varanasi',
     provider: 'meripehchan_sso',
   },
   public: {
-    id: 'usr-pub-000',
-    email: 'guest@sahaara.org',
-    name: 'Guest Sanctuary Visitor',
+    id: 'usr-p-000',
+    email: 'visitor@sahay.gov.in',
+    name: 'Visitor',
     role: 'public',
     district: 'National',
     provider: 'demo_sso',
@@ -68,11 +80,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasCompletedBaseline, setHasCompletedBaseline] = useState<boolean>(true);
+  const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
   const isConfigured = isSupabaseConfigured();
 
   useEffect(() => {
     // 1. Check local cached user state
-    const savedUser = localStorage.getItem('sahaara_auth_user');
+    const savedUser = localStorage.getItem('sahay_auth_user');
+    const savedBaseline = localStorage.getItem('sahay_baseline_completed');
+    const savedDrafts = localStorage.getItem('sahay_draft_notes');
+
+    if (savedBaseline !== null) {
+      setHasCompletedBaseline(savedBaseline === 'true');
+    }
+
+    if (savedDrafts) {
+      try { setDraftNotes(JSON.parse(savedDrafts)); } catch (e) {}
+    }
+
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
@@ -80,26 +105,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Failed to parse cached user', e);
       }
     } else {
-      // Default to citizen demo profile for frictionless onboarding
-      setUser(DEMO_USERS.citizen);
-      localStorage.setItem('sahaara_auth_user', JSON.stringify(DEMO_USERS.citizen));
+      // Default to victim for immediate exploration
+      setUser(DEMO_USERS.victim);
+      localStorage.setItem('sahay_auth_user', JSON.stringify(DEMO_USERS.victim));
     }
 
-    // 2. Check Supabase active session if configured
+    // 2. Check Supabase active session
     if (isConfigured) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           const authUser: AuthUser = {
             id: session.user.id,
-            email: session.user.email || 'user@sahaara.gov.in',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Sanctuary Citizen',
-            role: (session.user.user_metadata?.role as UserRole) || 'citizen',
+            email: session.user.email || 'user@sahay.gov.in',
+            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Citizen',
+            role: (session.user.user_metadata?.role as UserRole) || 'victim',
             district: session.user.user_metadata?.district || 'Varanasi',
-            avatarUrl: session.user.user_metadata?.avatar_url,
             provider: 'supabase_google',
           };
           setUser(authUser);
-          localStorage.setItem('sahaara_auth_user', JSON.stringify(authUser));
+          localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
         }
       });
 
@@ -107,15 +131,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           const authUser: AuthUser = {
             id: session.user.id,
-            email: session.user.email || 'user@sahaara.gov.in',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Sanctuary Citizen',
-            role: (session.user.user_metadata?.role as UserRole) || 'citizen',
+            email: session.user.email || 'user@sahay.gov.in',
+            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Citizen',
+            role: (session.user.user_metadata?.role as UserRole) || 'victim',
             district: session.user.user_metadata?.district || 'Varanasi',
-            avatarUrl: session.user.user_metadata?.avatar_url,
             provider: 'supabase_google',
           };
           setUser(authUser);
-          localStorage.setItem('sahaara_auth_user', JSON.stringify(authUser));
+          localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
         }
       });
 
@@ -127,6 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   }, [isConfigured]);
 
+  const setBaselineCompleted = (completed: boolean) => {
+    setHasCompletedBaseline(completed);
+    localStorage.setItem('sahay_baseline_completed', completed ? 'true' : 'false');
+  };
+
   const signInWithGoogle = async () => {
     if (isConfigured) {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -136,53 +164,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       });
       if (error) {
-        console.error('Supabase Google OAuth error:', error.message);
-        // Fallback to demo profile if Google OAuth client ID is not yet authorized in Supabase dashboard
-        signInAsRole('citizen');
+        signInAsRole('victim');
       }
     } else {
-      // Seamlessly activate Google SSO profile
-      const googleUser: AuthUser = {
-        id: `goog-${Date.now()}`,
-        email: 'user.google@sahaara.gov.in',
-        name: 'Google Verified Citizen',
-        role: 'citizen',
-        district: 'Varanasi',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-        provider: 'supabase_google',
-      };
-      setUser(googleUser);
-      localStorage.setItem('sahaara_auth_user', JSON.stringify(googleUser));
+      signInAsRole('victim');
     }
   };
 
   const signInWithMeriPehchan = async () => {
-    // Jan Parichay / MeriPehchan Government National SSO Provider
     const mpUser: AuthUser = {
       id: `mp-${Date.now()}`,
-      email: 'officer.nic@meity.gov.in',
-      name: 'MeriPehchan Verified Officer',
+      email: 'nodal.officer@nic.in',
+      name: 'Dr. Ananya Verma',
       role: 'counselor',
       district: 'Varanasi',
-      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop&q=80',
       provider: 'meripehchan_sso',
     };
     setUser(mpUser);
-    localStorage.setItem('sahaara_auth_user', JSON.stringify(mpUser));
+    localStorage.setItem('sahay_auth_user', JSON.stringify(mpUser));
+  };
+
+  const signInWithPhoneOtp = async (_phone: string, otp: string, role: UserRole = 'victim'): Promise<boolean> => {
+    if (otp === '123456' || otp.length === 6) {
+      const loggedUser = DEMO_USERS[role] || DEMO_USERS.victim;
+      setUser(loggedUser);
+      localStorage.setItem('sahay_auth_user', JSON.stringify(loggedUser));
+      return true;
+    }
+    return false;
   };
 
   const signInAsRole = (role: UserRole) => {
-    const selected = DEMO_USERS[role];
+    const selected = DEMO_USERS[role] || DEMO_USERS.victim;
     setUser(selected);
-    localStorage.setItem('sahaara_auth_user', JSON.stringify(selected));
+    localStorage.setItem('sahay_auth_user', JSON.stringify(selected));
   };
 
   const signOut = async () => {
     if (isConfigured) {
-      await supabase.auth.signOut();
+      try { await supabase.auth.signOut(); } catch (e) {}
     }
-    localStorage.removeItem('sahaara_auth_user');
+    localStorage.removeItem('sahay_auth_user');
     setUser(null);
+  };
+
+  const saveDraftNote = (caseId: string, note: string) => {
+    const updated = { ...draftNotes, [caseId]: note };
+    setDraftNotes(updated);
+    localStorage.setItem('sahay_draft_notes', JSON.stringify(updated));
+  };
+
+  const getDraftNote = (caseId: string): string => {
+    return draftNotes[caseId] || '';
   };
 
   return (
@@ -191,10 +224,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         loading,
         isConfigured,
+        hasCompletedBaseline,
+        setBaselineCompleted,
         signInWithGoogle,
         signInWithMeriPehchan,
+        signInWithPhoneOtp,
         signInAsRole,
         signOut,
+        saveDraftNote,
+        getDraftNote,
       }}
     >
       {children}
