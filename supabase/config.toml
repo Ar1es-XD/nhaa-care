@@ -1,0 +1,10 @@
+[project]
+id = "nhaa-care"
+
+[api]
+port = 54321
+schemas = ["public"]
+
+[db]
+port = 54322
+major_version = 16
