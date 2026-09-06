@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { QuickExit } from './QuickExit';
 import { AmbientSoundWidget } from './AmbientSoundWidget';
+import { AuthModal } from './AuthModal';
 
 export const SanctuaryHeader: React.FC = () => {
   return (
@@ -22,11 +23,12 @@ export const SanctuaryHeader: React.FC = () => {
 
         <div className="flex items-center gap-2.5">
           <AmbientSoundWidget />
+          <AuthModal />
           <a
             href="tel:14566"
             className="hidden md:flex items-center gap-1.5 bg-[#f4f7f5] hover:bg-[#e8f0ec] text-[#354f52] font-semibold px-3.5 py-1.5 rounded-full text-xs transition border border-[#d8e6de]"
           >
-            <span>📞 24x7: 14566</span>
+            <span>📞 14566</span>
           </a>
           <QuickExit />
         </div>
