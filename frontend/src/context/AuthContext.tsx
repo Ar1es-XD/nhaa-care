@@ -13,7 +13,7 @@ export interface AuthUser {
   district: string;
   caseNumber?: string;
   avatarUrl?: string;
-  provider: 'supabase_google' | 'meripehchan_sso' | 'otp_session' | 'demo_sso';
+  provider: 'supabase_email' | 'supabase_google' | 'meripehchan_sso' | 'otp_session' | 'demo_sso';
 }
 
 interface AuthContextType {
@@ -22,7 +22,9 @@ interface AuthContextType {
   isConfigured: boolean;
   hasCompletedBaseline: boolean;
   setBaselineCompleted: (completed: boolean) => void;
-  signInWithGoogle: () => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name: string, role: UserRole, district: string) => Promise<{ success: boolean; message: string; requiresConfirmation?: boolean }>;
+  signInWithEmail: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   signInWithMeriPehchan: () => Promise<void>;
   signInWithPhoneOtp: (phone: string, otp: string, role?: UserRole) => Promise<boolean>;
   signInAsRole: (role: UserRole) => void;
@@ -120,12 +122,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Citizen',
             role: (session.user.user_metadata?.role as UserRole) || 'victim',
             district: session.user.user_metadata?.district || 'Varanasi',
-            provider: 'supabase_google',
+            provider: session.user.app_metadata?.provider === 'google' ? 'supabase_google' : 'supabase_email',
           };
           setUser(authUser);
           localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
         }
-      });
+        setLoading(false);
+      }).catch(() => setLoading(false));
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
@@ -135,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Citizen',
             role: (session.user.user_metadata?.role as UserRole) || 'victim',
             district: session.user.user_metadata?.district || 'Varanasi',
-            provider: 'supabase_google',
+            provider: session.user.app_metadata?.provider === 'google' ? 'supabase_google' : 'supabase_email',
           };
           setUser(authUser);
           localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
@@ -145,9 +148,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return () => {
         subscription.unsubscribe();
       };
+    } else {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [isConfigured]);
 
   const setBaselineCompleted = (completed: boolean) => {
@@ -155,19 +158,150 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('sahay_baseline_completed', completed ? 'true' : 'false');
   };
 
-  const signInWithGoogle = async () => {
-    if (isConfigured) {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+  const signUpWithEmail = async (
+    email: string,
+    password: string,
+    name: string,
+    role: UserRole,
+    district: string
+  ): Promise<{ success: boolean; message: string; requiresConfirmation?: boolean }> => {
+    if (!isConfigured) {
+      const demoUser: AuthUser = {
+        id: `usr-${Date.now()}`,
+        email,
+        name,
+        role,
+        district,
+        provider: 'demo_sso',
+      };
+      setUser(demoUser);
+      localStorage.setItem('sahay_auth_user', JSON.stringify(demoUser));
+      return { success: true, message: 'Account created successfully!' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            full_name: name,
+            role,
+            district,
+          },
         },
       });
+
       if (error) {
-        signInAsRole('victim');
+        return { success: false, message: error.message };
+      }
+
+      if (data.session?.user) {
+        const authUser: AuthUser = {
+          id: data.session.user.id,
+          email: data.session.user.email || email,
+          name: name,
+          role: role,
+          district: district,
+          provider: 'supabase_email',
+        };
+        setUser(authUser);
+        localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
+        return { success: true, message: 'Account created and signed in successfully!' };
+      }
+
+      if (data.user && !data.session) {
+        const pendingUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email || email,
+          name: name,
+          role: role,
+          district: district,
+          provider: 'supabase_email',
+        };
+        setUser(pendingUser);
+        localStorage.setItem('sahay_auth_user', JSON.stringify(pendingUser));
+        return {
+          success: true,
+          requiresConfirmation: true,
+          message: 'Account created! Verification email has been dispatched.',
+        };
+      }
+
+      return { success: true, message: 'Account created successfully!' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'An error occurred during registration.' };
+    }
+  };
+
+  const signInWithEmail = async (
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!isConfigured) {
+      const demoUser: AuthUser = {
+        id: `usr-${Date.now()}`,
+        email,
+        name: email.split('@')[0],
+        role: 'victim',
+        district: 'Varanasi',
+        provider: 'demo_sso',
+      };
+      setUser(demoUser);
+      localStorage.setItem('sahay_auth_user', JSON.stringify(demoUser));
+      return { success: true, message: 'Signed in successfully!' };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+
+      if (data.session?.user) {
+        const meta = data.session.user.user_metadata || {};
+        const authUser: AuthUser = {
+          id: data.session.user.id,
+          email: data.session.user.email || email,
+          name: meta.full_name || email.split('@')[0],
+          role: (meta.role as UserRole) || 'victim',
+          district: meta.district || 'Varanasi',
+          provider: 'supabase_email',
+        };
+        setUser(authUser);
+        localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
+        return { success: true, message: 'Welcome back!' };
+      }
+
+      return { success: false, message: 'Unable to establish session. Please verify your credentials.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'An error occurred during sign in.' };
+    }
+  };
+
+  const signInWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+    if (isConfigured) {
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, message: err?.message || 'Failed to connect to Google OAuth.' };
       }
     } else {
       signInAsRole('victim');
+      return { success: true };
     }
   };
 
@@ -226,6 +360,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isConfigured,
         hasCompletedBaseline,
         setBaselineCompleted,
+        signUpWithEmail,
+        signInWithEmail,
         signInWithGoogle,
         signInWithMeriPehchan,
         signInWithPhoneOtp,
