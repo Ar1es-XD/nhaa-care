@@ -6,11 +6,27 @@
 --           Row Level Security (RLS), and Full Seed Data.
 -- ============================================================================
 
+-- 0. CLEAN SLATE: DROP OLD CONFLICTING TABLES & POLICIES (Idempotent Setup)
+DROP TABLE IF EXISTS triage_alerts CASCADE;
+DROP TABLE IF EXISTS distress_snapshots CASCADE;
+DROP TABLE IF EXISTS interactions CASCADE;
+DROP TABLE IF EXISTS case_milestones CASCADE;
+DROP TABLE IF EXISTS relief_compensations CASCADE;
+DROP TABLE IF EXISTS break_glass_events CASCADE;
+DROP TABLE IF EXISTS break_glass_sessions CASCADE;
+DROP TABLE IF EXISTS alert_records CASCADE;
+DROP TABLE IF EXISTS interaction_sessions CASCADE;
+DROP TABLE IF EXISTS case_master CASCADE;
+DROP TABLE IF EXISTS identity_vault CASCADE;
+DROP TABLE IF EXISTS system_audit_logs CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS jurisdictions CASCADE;
+
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. ENUM TYPES
+-- 2. ENUM TYPES (Using TEXT or Flexible Enums)
 DO $$ BEGIN
     CREATE TYPE risk_tier_enum AS ENUM ('TIER_1_MILD', 'TIER_2_MODERATE', 'TIER_3_HIGH', 'TIER_4_CRITICAL');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
@@ -38,26 +54,26 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- 3. CORE TABLES
 
 -- 3.1 Jurisdictions
-CREATE TABLE IF NOT EXISTS jurisdictions (
+CREATE TABLE jurisdictions (
     jurisdiction_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    state_code VARCHAR(10) NOT NULL,
-    state_name VARCHAR(100) NOT NULL,
-    district_code VARCHAR(10) NOT NULL,
-    district_name VARCHAR(100) NOT NULL,
-    nodal_officer_name VARCHAR(255),
-    nodal_officer_phone VARCHAR(50),
+    state_code TEXT NOT NULL,
+    state_name TEXT NOT NULL,
+    district_code TEXT NOT NULL,
+    district_name TEXT NOT NULL,
+    nodal_officer_name TEXT,
+    nodal_officer_phone TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_state_district UNIQUE (state_code, district_code)
 );
 
 -- 3.2 Platform Users & Officers
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     supabase_auth_id UUID,
-    full_name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    role user_role_enum NOT NULL,
+    full_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT NOT NULL,
     jurisdiction_id UUID REFERENCES jurisdictions(jurisdiction_id),
     is_active BOOLEAN DEFAULT TRUE,
     last_login_at TIMESTAMPTZ,
@@ -65,49 +81,49 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- 3.3 Zero-Knowledge Identity Vault (PII Isolated & Encrypted)
-CREATE TABLE IF NOT EXISTS identity_vault (
+CREATE TABLE identity_vault (
     identity_vault_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     encrypted_aadhaar_ref BYTEA,
     encrypted_phone BYTEA NOT NULL,
     encrypted_name BYTEA NOT NULL,
     encrypted_caste_category BYTEA NOT NULL,
-    key_version VARCHAR(20) NOT NULL DEFAULT 'v1-kavach-aes256',
+    key_version TEXT NOT NULL DEFAULT 'v1-kavach-aes256',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3.4 Case Master (Anonymized PoA Cases)
-CREATE TABLE IF NOT EXISTS case_master (
+CREATE TABLE case_master (
     case_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    nhaa_case_number VARCHAR(50) UNIQUE NOT NULL,
+    nhaa_case_number TEXT UNIQUE NOT NULL,
     identity_vault_id UUID NOT NULL REFERENCES identity_vault(identity_vault_id),
     jurisdiction_id UUID NOT NULL REFERENCES jurisdictions(jurisdiction_id),
-    police_station VARCHAR(150),
-    fir_number VARCHAR(100),
+    police_station TEXT,
+    fir_number TEXT,
     fir_date DATE,
     poa_sections TEXT[],
-    case_status VARCHAR(50) DEFAULT 'ACTIVE_INVESTIGATION',
+    case_status TEXT DEFAULT 'ACTIVE_INVESTIGATION',
     baseline_vulnerability_score NUMERIC(5,2) DEFAULT 50.00,
-    witness_protection_tier VARCHAR(20) DEFAULT 'CATEGORY_B',
+    witness_protection_tier TEXT DEFAULT 'CATEGORY_B',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3.5 Case Milestones & Judicial Events
-CREATE TABLE IF NOT EXISTS case_milestones (
+CREATE TABLE case_milestones (
     milestone_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
-    milestone_type milestone_type_enum NOT NULL,
+    milestone_type TEXT NOT NULL,
     milestone_date DATE NOT NULL,
-    source_channel channel_enum NOT NULL,
+    source_channel TEXT NOT NULL,
     milestone_details JSONB,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3.6 Multilingual Interactions (Voice/Web/IVRS)
-CREATE TABLE IF NOT EXISTS interactions (
+CREATE TABLE interactions (
     interaction_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
-    channel channel_enum NOT NULL,
-    language_code VARCHAR(10) DEFAULT 'hi',
+    channel TEXT NOT NULL,
+    language_code TEXT DEFAULT 'hi',
     call_duration_seconds INTEGER DEFAULT 0,
     consent_obtained BOOLEAN DEFAULT TRUE,
     quick_exit_triggered BOOLEAN DEFAULT FALSE,
@@ -115,28 +131,28 @@ CREATE TABLE IF NOT EXISTS interactions (
 );
 
 -- 3.7 Distress Snapshots (Dynamic Distress Engine Outputs)
-CREATE TABLE IF NOT EXISTS distress_snapshots (
+CREATE TABLE distress_snapshots (
     snapshot_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
     interaction_id UUID REFERENCES interactions(interaction_id),
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    model_version VARCHAR(50) NOT NULL DEFAULT 'v1.0.2-calibrated',
+    model_version TEXT NOT NULL DEFAULT 'v1.0.2-calibrated',
     voice_stress_score NUMERIC(5,2) DEFAULT 0.00,
     nlp_sentiment_score NUMERIC(5,2) DEFAULT 0.00,
     clinical_screener_score NUMERIC(5,2) DEFAULT 0.00,
     delta_velocity_score NUMERIC(5,2) DEFAULT 0.00,
     calculated_dds NUMERIC(5,2) NOT NULL,
-    assigned_tier risk_tier_enum NOT NULL,
+    assigned_tier TEXT NOT NULL,
     shap_explainability JSONB
 );
 
 -- 3.8 Triage Alerts
-CREATE TABLE IF NOT EXISTS triage_alerts (
+CREATE TABLE triage_alerts (
     alert_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
     snapshot_id UUID REFERENCES distress_snapshots(snapshot_id),
-    risk_tier risk_tier_enum NOT NULL,
-    status alert_status_enum DEFAULT 'TRIGGERED',
+    risk_tier TEXT NOT NULL,
+    status TEXT DEFAULT 'TRIGGERED',
     verbatim_preserved_quote TEXT,
     counselor_verified_by UUID REFERENCES users(user_id),
     counselor_verification_notes TEXT,
@@ -144,10 +160,10 @@ CREATE TABLE IF NOT EXISTS triage_alerts (
 );
 
 -- 3.9 PoA Rule 12 Relief Compensation Tracking
-CREATE TABLE IF NOT EXISTS relief_compensations (
+CREATE TABLE relief_compensations (
     relief_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
-    stage_name VARCHAR(100) NOT NULL,
+    stage_name TEXT NOT NULL,
     sanctioned_amount NUMERIC(12,2) NOT NULL,
     disbursed_amount NUMERIC(12,2) DEFAULT 0.00,
     is_disbursed BOOLEAN DEFAULT FALSE,
@@ -156,36 +172,36 @@ CREATE TABLE IF NOT EXISTS relief_compensations (
 );
 
 -- 3.10 Break-Glass Emergency Unmasking Logs (4-Hour Protocol)
-CREATE TABLE IF NOT EXISTS break_glass_events (
+CREATE TABLE break_glass_events (
     break_glass_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     actor_user_id UUID REFERENCES users(user_id),
     case_id UUID NOT NULL REFERENCES case_master(case_id) ON DELETE CASCADE,
     justification TEXT NOT NULL CHECK (char_length(justification) >= 50),
-    otp_code VARCHAR(10) NOT NULL,
+    otp_code TEXT NOT NULL,
     granted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMPTZ DEFAULT (CURRENT_TIMESTAMP + INTERVAL '4 hours'),
     is_revoked BOOLEAN DEFAULT FALSE
 );
 
 -- 3.11 Tamper-Evident SHA-256 Audit Ledger (Hash-Chained)
-CREATE TABLE IF NOT EXISTS system_audit_logs (
+CREATE TABLE system_audit_logs (
     audit_id BIGSERIAL PRIMARY KEY,
-    prev_hash VARCHAR(64) NOT NULL,
+    prev_hash TEXT NOT NULL,
     actor_user_id UUID,
-    actor_role VARCHAR(50),
-    action_type VARCHAR(100) NOT NULL,
-    target_resource VARCHAR(100) NOT NULL,
-    resource_id VARCHAR(100) NOT NULL,
-    hash_checksum VARCHAR(64) NOT NULL,
+    actor_role TEXT,
+    action_type TEXT NOT NULL,
+    target_resource TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    hash_checksum TEXT NOT NULL,
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 4. PERFORMANCE INDEXES
-CREATE INDEX IF NOT EXISTS idx_case_master_number ON case_master(nhaa_case_number);
-CREATE INDEX IF NOT EXISTS idx_case_master_jurisdiction ON case_master(jurisdiction_id);
-CREATE INDEX IF NOT EXISTS idx_distress_case_date ON distress_snapshots(case_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_triage_tier_status ON triage_alerts(risk_tier, status);
-CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON system_audit_logs(timestamp DESC);
+CREATE INDEX idx_case_master_number ON case_master(nhaa_case_number);
+CREATE INDEX idx_case_master_jurisdiction ON case_master(jurisdiction_id);
+CREATE INDEX idx_distress_case_date ON distress_snapshots(case_id, recorded_at DESC);
+CREATE INDEX idx_triage_tier_status ON triage_alerts(risk_tier, status);
+CREATE INDEX idx_audit_timestamp ON system_audit_logs(timestamp DESC);
 
 -- 5. ROW LEVEL SECURITY (RLS) POLICIES
 ALTER TABLE jurisdictions ENABLE ROW LEVEL SECURITY;
@@ -241,7 +257,7 @@ VALUES
     ('Vikramaditya Singh, IPS', 'sp.varanasi@uppolice.gov.in', 'SUPERINTENDENT_OF_POLICE', TRUE)
 ON CONFLICT (email) DO NOTHING;
 
--- 6.3 Seed Zero-Knowledge Identity Vault Entries (AES-256 Mocked Hashes)
+-- 6.3 Seed Zero-Knowledge Identity Vault Entries (AES-256 Encrypted via pgcrypto)
 INSERT INTO identity_vault (identity_vault_id, encrypted_name, encrypted_phone, encrypted_caste_category, key_version)
 VALUES
     ('a1111111-1111-1111-1111-111111111111', pgp_sym_encrypt('Priya Devi', 'kavach-prod-master-key'), pgp_sym_encrypt('+91 98765 43210', 'kavach-prod-master-key'), pgp_sym_encrypt('Scheduled Caste (Chamar)', 'kavach-prod-master-key'), 'v1-kavach-aes256'),
