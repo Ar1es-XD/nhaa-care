@@ -1,5 +1,8 @@
 import json
+import os
 import re
+import ssl
+import urllib.request
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
@@ -20,6 +23,40 @@ class AgentTurnResponse(BaseModel):
     offer_quick_exit: bool = False
     language_used: str
 
+def generate_gemini_reflection(transcript: str, language: str = "hi") -> str:
+    """
+    Calls Google Gemini 3.6 Flash to generate trauma-informed, empathetic responses.
+    Falls back gracefully to supportive standard response on timeout or network error.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return (
+            "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
+            if language == "hi"
+            else "We are here listening to you with care. Please feel free to share whatever is on your mind."
+        )
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
+        prompt = (
+            "You are Sahaara AI, an empathetic, soothing mental health listening companion for victims under the SC/ST framework in India. "
+            f"Respond warmly and with dignity in {'Hindi' if language == 'hi' else 'English'}. Never give clinical diagnoses. Keep it gentle and grounding. "
+            f"Citizen shared: {transcript}"
+        )
+        data = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ctx, timeout=6) as res:
+            res_json = json.loads(res.read().decode("utf-8"))
+            return res_json["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        return (
+            "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
+            if language == "hi"
+            else "We are here listening to you with care. Please feel free to share whatever is on your mind."
+        )
+
 THREAT_KEYWORDS = [
     "threat", "intimidat", "kill", "burn", "withdraw", "compromise", 
     "gawah", "dhamki", "marenge", "jala", "barbaad", "marne", "police",
@@ -30,12 +67,18 @@ SELF_HARM_KEYWORDS = [
     "suicide", "khatam", "mar jana", "jeene ka man nahi", "end my life", "give up"
 ]
 
-def process_citizen_turn(transcript: str, channel: str = "IVRS_OUTBOUND", language: str = "hi") -> AgentTurnResponse:
+def process_citizen_turn(
+    transcript: str, 
+    channel: str = "IVRS_OUTBOUND", 
+    language: str = "hi",
+    use_llm: bool = False
+) -> AgentTurnResponse:
     """
     Evaluates citizen input against strict safety guardrails (Section 5.3).
     - AI is a listening and routing agent, never a clinician.
     - Preserves raw verbatim text and routes to human counselor immediately.
     - Zero clinical or diagnostic jargon.
+    - Can invoke Gemini LLM for supportive empathetic dialogue.
     """
     clean_text = transcript.strip()
     lower_t = clean_text.lower()
@@ -85,7 +128,9 @@ def process_citizen_turn(transcript: str, channel: str = "IVRS_OUTBOUND", langua
     words = clean_text.split()
     is_terse = len(words) <= 2 and clean_text != ""
     
-    if language == "hi":
+    if use_llm and not is_terse:
+        spoken_text = generate_gemini_reflection(clean_text, language)
+    elif language == "hi":
         spoken_text = "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
     else:
         spoken_text = "We are here listening to you with care. Please feel free to share whatever is on your mind."
