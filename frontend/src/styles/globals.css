@@ -4,9 +4,10 @@
 @tailwind utilities;
 
 body {
-  background-color: var(--surface-cream);
+  background-color: var(--sanctuary-sand);
   color: var(--text-primary);
   font-family: var(--font-latin);
+  -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {

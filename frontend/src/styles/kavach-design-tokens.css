@@ -1,0 +1,36 @@
+/* Sahaara (सहारा) — Self-Help & Healing Sanctuary Design Tokens
+   Trauma-Informed, Calming, and WCAG 2.1 AA / GIGW 3.0 Compliant */
+
+:root {
+  /* Sanctuary Earth & Botanical Palette */
+  --sanctuary-sage: #52796f;         /* Primary calming color */
+  --sanctuary-sage-dark: #354f52;    /* Grounded deep headers */
+  --sanctuary-sage-light: #e8f0ec;   /* Soft wellness pill badge */
+  --sanctuary-sand: #faf8f5;         /* Warm oatmeal non-glare background */
+  --sanctuary-card: #ffffff;         /* Clean card surface */
+  --sanctuary-terracotta: #d97757;   /* Warm supportive accent */
+  --sanctuary-lavender: #ece9fb;     /* Peaceful introspective accents */
+  --sanctuary-teal: #2a9d8f;         /* Balanced peaceful state */
+
+  /* Text & Contrast (WCAG AAA) */
+  --text-primary: #2d3748;          /* Soft charcoal, gentle on eyes */
+  --text-secondary: #52796f;        /* Empathetic subtitle sage */
+  --text-muted: #8c9ba5;
+
+  /* Emotional Tiers (De-stigmatized) */
+  --tier-1-mild: #2a9d8f;           /* "Peaceful & Supported" */
+  --tier-2-moderate: #e9c46a;       /* "Reflective Care" */
+  --tier-3-high: #f4a261;           /* "Gentle Attention" */
+  --tier-4-critical: #e76f51;       /* "Urgent Protective Care" */
+
+  /* Accessible Focus & Elevation */
+  --focus-ring: #52796f;
+  --radius-card: 1.5rem;            /* 24px organic curve */
+  --radius-pill: 9999px;
+  --shadow-soft: 0 4px 20px -2px rgba(53, 79, 82, 0.07);
+  --shadow-float: 0 12px 32px -4px rgba(53, 79, 82, 0.12);
+
+  /* Typography */
+  --font-latin: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-devanagari: 'Noto Sans Devanagari', sans-serif;
+}
