@@ -23,18 +23,60 @@ class AgentTurnResponse(BaseModel):
     offer_quick_exit: bool = False
     language_used: str
 
-def generate_gemini_reflection(transcript: str, language: str = "hi") -> str:
+def generate_openai_reflection(transcript: str, language: str = "hi") -> Optional[str]:
+    """
+    Calls OpenAI Chat Completions API (gpt-4o-mini) to generate trauma-informed reflections.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    try:
+        url = "https://api.openai.com/v1/chat/completions"
+        system_prompt = (
+            "You are Sahaara AI, a gentle, trauma-informed mental wellness listening companion in India. "
+            "Your role is to support citizens, complainants, and families who are experiencing stress, anxiety, or hardship under the SC/ST framework.\n"
+            "CRITICAL RULES:\n"
+            "1. Warmth & Dignity: Always treat the person with unconditional respect, kindness, and validation.\n"
+            "2. No Clinical Diagnoses: NEVER diagnose mental illnesses, quote psychiatric labels, or prescribe medications.\n"
+            f"3. Language: Respond in {'comforting Hindi or Hinglish' if language == 'hi' else 'English'}.\n"
+            "4. Grounding: Provide practical, calming guidance. Keep it gentle, supportive, and concise (1-2 short paragraphs)."
+        )
+        payload = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Citizen shared: {transcript}"}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 300
+        }).encode("utf-8")
+        
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+        )
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, context=ctx, timeout=6) as res:
+            res_json = json.loads(res.read().decode("utf-8"))
+            content = res_json.get("choices", [{}])[0].get("message", {}).get("content")
+            return content.strip() if content else None
+    except Exception:
+        return None
+
+def generate_gemini_reflection(transcript: str, language: str = "hi") -> Optional[str]:
     """
     Calls Google Gemini 3.6 Flash to generate trauma-informed, empathetic responses.
-    Falls back gracefully to supportive standard response on timeout or network error.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return (
-            "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
-            if language == "hi"
-            else "We are here listening to you with care. Please feel free to share whatever is on your mind."
-        )
+        return None
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
         prompt = (
@@ -51,11 +93,38 @@ def generate_gemini_reflection(transcript: str, language: str = "hi") -> str:
             res_json = json.loads(res.read().decode("utf-8"))
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
     except Exception:
+        return None
+
+def generate_dynamic_reflection(transcript: str, language: str = "hi") -> str:
+    """
+    Empathetic dynamic fallback when external AI quota is unavailable.
+    """
+    snippet = transcript[:80] + ("..." if len(transcript) > 80 else "")
+    if language == "hi" or re.search(r"[\u0900-\u097f]", transcript):
         return (
-            "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
-            if language == "hi"
-            else "We are here listening to you with care. Please feel free to share whatever is on your mind."
+            f"हमने आपकी बात बहुत ध्यान और संवेदनशीलता से सुनी: \"{snippet}\"। "
+            "इस समय मन में तनाव या चिंता होना पूरी तरह से स्वाभाविक है। स्वयं पर कोई दबाव न डालें। "
+            "सहारा आपके साथ एक सुरक्षित साथी की तरह उपस्थित है। गहरी सांस लें, हम आपकी बात सुनने के लिए हमेशा यहाँ हैं।"
         )
+    return (
+        f"We hear your words with deep presence and care: \"{snippet}\". "
+        "It is completely understandable to feel the weight of this right now. Please be gentle with yourself. "
+        "Take a slow, calming breath. Sahaara is here with you as a safe sanctuary."
+    )
+
+def generate_llm_reflection(transcript: str, language: str = "hi") -> str:
+    """
+    Orchestrates LLM response: OpenAI -> Gemini -> Empathetic Dynamic Engine.
+    """
+    openai_res = generate_openai_reflection(transcript, language)
+    if openai_res:
+        return openai_res
+        
+    gemini_res = generate_gemini_reflection(transcript, language)
+    if gemini_res:
+        return gemini_res
+        
+    return generate_dynamic_reflection(transcript, language)
 
 THREAT_KEYWORDS = [
     "threat", "intimidat", "kill", "burn", "withdraw", "compromise", 
@@ -129,7 +198,7 @@ def process_citizen_turn(
     is_terse = len(words) <= 2 and clean_text != ""
     
     if use_llm and not is_terse:
-        spoken_text = generate_gemini_reflection(clean_text, language)
+        spoken_text = generate_llm_reflection(clean_text, language)
     elif language == "hi":
         spoken_text = "Hum aapki baat dhyan se sun rahe hain. Aap jo bhi mehsoos kar rahe hain, bina kisi sankoch ke batayein."
     else:

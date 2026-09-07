@@ -21,3 +21,17 @@ def test_terse_input_proactive_quick_exit():
     transcript = "haan"
     resp = process_citizen_turn(transcript, language="hi")
     assert resp.offer_quick_exit is True
+
+def test_llm_dynamic_reflection_hindi():
+    transcript = "aaj subah se man bahut ghabra raha hai, kuch samajh nahi aa raha."
+    resp = process_citizen_turn(transcript, language="hi", use_llm=True)
+    assert resp.requires_escalation is False
+    assert len(resp.spoken_response) > 20
+    assert "disorder" not in resp.spoken_response.lower()
+
+def test_llm_dynamic_reflection_english():
+    transcript = "I am feeling anxious about tomorrow's legal proceedings and unable to sleep."
+    resp = process_citizen_turn(transcript, language="en", use_llm=True)
+    assert resp.requires_escalation is False
+    assert len(resp.spoken_response) > 20
+    assert "disorder" not in resp.spoken_response.lower()

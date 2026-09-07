@@ -13,6 +13,7 @@ class CitizenTurnRequest(BaseModel):
     language: str = "hi"
     transcript: str
     audio_samples: Optional[List[float]] = None
+    use_llm: bool = True
 
 @router.post("/process-turn", response_model=AgentTurnResponse)
 def handle_citizen_turn(req: CitizenTurnRequest):
@@ -25,7 +26,8 @@ def handle_citizen_turn(req: CitizenTurnRequest):
     response = process_citizen_turn(
         transcript=req.transcript,
         channel=req.channel,
-        language=req.language
+        language=req.language,
+        use_llm=req.use_llm
     )
     
     # Optional prosody analysis if audio waveform samples are transmitted
