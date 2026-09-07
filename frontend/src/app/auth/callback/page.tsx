@@ -16,7 +16,11 @@ function CallbackContent() {
         // 1. Check if there is an auth code to exchange
         const code = searchParams.get('code');
         if (code) {
-          await supabase.auth.exchangeCodeForSession(code);
+          try {
+            await supabase.auth.exchangeCodeForSession(code);
+          } catch (codeErr) {
+            console.warn('OAuth code exchange notice (session may already exist):', codeErr);
+          }
         }
 
         // 2. Retrieve session from Supabase

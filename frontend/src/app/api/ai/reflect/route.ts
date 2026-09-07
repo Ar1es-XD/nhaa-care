@@ -22,13 +22,15 @@ const THREAT_PATTERNS = [
   "attack", "dar lag raha", "goli", "suicide", "end my life", "darr"
 ];
 
+const HINGLISH_PATTERNS = /\b(hai|hain|nahi|nahin|hum|hume|mera|meri|mere|bache|ghar|darr|dar|gawah|gawaahi|police|shaam|aaye|gaye|kya|kyun|kaise|muavza|paise|karen|baat|thik|bol|bolo|unke|unhone|chhod)\b/i;
+
 function generateDynamicEmpatheticResponse(
   prompt: string,
-  emotion: string = 'seeking calm',
+  emotion?: string,
   language: string = 'hi',
   isSafetyEscalation: boolean = false
 ): string {
-  const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt);
+  const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt) || HINGLISH_PATTERNS.test(prompt);
   const snippet = prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt;
 
   if (isSafetyEscalation) {
@@ -47,21 +49,28 @@ function generateDynamicEmpatheticResponse(
 
 function ensureCompleteResponse(text: string, isHindi: boolean = false): string {
   if (!text) return '';
-  const trimmed = text.trim();
+  let trimmed = text.trim();
   const validPunctuation = ['.', '!', '?', '।', '"', '”', ')', '\n'];
   const lastChar = trimmed.slice(-1);
   if (validPunctuation.includes(lastChar)) {
     return trimmed;
   }
+  
+  // Find last complete sentence boundary
   const lastPeriod = Math.max(
     trimmed.lastIndexOf('।'),
-    trimmed.lastIndexOf('. '),
-    trimmed.lastIndexOf('! '),
-    trimmed.lastIndexOf('? ')
+    trimmed.lastIndexOf('.'),
+    trimmed.lastIndexOf('!'),
+    trimmed.lastIndexOf('?')
   );
-  if (lastPeriod > 40) {
+
+  if (lastPeriod > 25) {
     return trimmed.substring(0, lastPeriod + 1).trim();
   }
+
+  // Strip trailing dangling conjunctions before closing
+  trimmed = trimmed.replace(/\s+(और|कि|तथा|एवं|या|लेकिन|परंतु|and|or|but|because|with|ki)$/i, '');
+
   return isHindi 
     ? `${trimmed}। सहारा हर कदम पर आपके साथ है।`
     : `${trimmed}. Sahaara stands beside you with care.`;
@@ -81,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     const lower = prompt.toLowerCase();
     const isSafetyEscalation = THREAT_PATTERNS.some((kw) => lower.includes(kw));
-    const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt);
+    const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt) || HINGLISH_PATTERNS.test(prompt);
 
     // 1. Try OpenAI API first if key is configured (Primary Engine)
     if (OPENAI_API_KEY) {

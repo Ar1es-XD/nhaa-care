@@ -1,12 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import { CommandViewHeader } from '@/components/common/CommandViewHeader';
 import { getCounselorCaseload, CompleteUserDossier, getFullUserDossier } from '@/lib/interactionStore';
 import { UserDossierModal } from '@/components/counselor/UserDossierModal';
 
 export default function CounselorQueuePage() {
+  const router = useRouter();
+  const { user } = useAuth();
   const [tierFilter, setTierFilter] = useState<'DISTRICT' | 'ALL'>('DISTRICT');
   const [caseload, setCaseload] = useState<CompleteUserDossier[]>([]);
   const [selectedDossier, setSelectedDossier] = useState<CompleteUserDossier | null>(null);
@@ -15,10 +19,26 @@ export default function CounselorQueuePage() {
   const [aiSummaries, setAiSummaries] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Load assigned caseload for Dr. Ananya Verma (Varanasi District)
-    const assigned = getCounselorCaseload('usr-c-002');
-    setCaseload(assigned);
-  }, []);
+    // Role Guard: Citizens are redirected to their private sanctuary
+    if (user && user.role === 'victim') {
+      router.replace('/v/dashboard');
+      return;
+    }
+
+    const syncCaseload = () => {
+      const counselorId = user?.role === 'counselor' ? user.id : 'usr-c-002';
+      const assigned = getCounselorCaseload(counselorId);
+      setCaseload(assigned);
+    };
+
+    syncCaseload();
+    window.addEventListener('focus', syncCaseload);
+    window.addEventListener('storage', syncCaseload);
+    return () => {
+      window.removeEventListener('focus', syncCaseload);
+      window.removeEventListener('storage', syncCaseload);
+    };
+  }, [user, router]);
 
   const primaryCase = caseload[0];
   const compactCases = caseload.slice(1);
@@ -129,9 +149,13 @@ export default function CounselorQueuePage() {
                 
                 {/* Card Header */}
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#D9D4C8] pb-4">
-                  <div>
+                  <div 
+                    onClick={() => handleOpenDossier(primaryCase.caseNumber)}
+                    className="cursor-pointer group space-y-1"
+                    title="Click to view complete DB dossier"
+                  >
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[#23303A]">
+                      <span className="text-sm font-bold text-[#23303A] group-hover:text-[#1F4A48] group-hover:underline">
                         {primaryCase.caseNumber}
                       </span>
                       <span className="text-xs text-[#8C4A3A] bg-[#F7ECE9] px-2 py-0.5 rounded font-bold border border-[#E5CDC6]">
@@ -141,7 +165,7 @@ export default function CounselorQueuePage() {
                         {primaryCase.anonymizedIdentifier}
                       </span>
                     </div>
-                    <p className="text-xs text-[#4E5B72] mt-1">
+                    <p className="text-xs text-[#4E5B72]">
                       {primaryCase.district} • Last Active: {primaryCase.lastActiveTimestamp} • Milestone: {primaryCase.milestoneContext}
                     </p>
                   </div>
@@ -256,9 +280,15 @@ export default function CounselorQueuePage() {
                   className="bg-white border border-[#D9D4C8] hover:border-[#1F4A48] rounded-2xl p-5 space-y-3 transition shadow-sm"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
+                    <div 
+                      onClick={() => handleOpenDossier(c.caseNumber)}
+                      className="cursor-pointer group space-y-1"
+                      title="Click to view complete DB dossier"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-[#23303A]">{c.caseNumber}</span>
+                        <span className="text-xs font-bold text-[#23303A] group-hover:text-[#1F4A48] group-hover:underline">
+                          {c.caseNumber}
+                        </span>
                         <span className="text-[10px] text-[#B98A2B] bg-[#FAF3E0] px-2 py-0.5 rounded font-bold border border-[#E6D4A8]">
                           Elevated Risk
                         </span>

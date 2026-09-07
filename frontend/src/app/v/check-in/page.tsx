@@ -90,7 +90,7 @@ function CheckInContent() {
         body: JSON.stringify({
           prompt: sentText,
           emotion: 'seeking quiet support',
-          language: /[अ-ह]/.test(sentText) ? 'hi' : 'en',
+          language: /[\u0900-\u097F]/.test(sentText) || /\b(hai|hain|nahi|nahin|hum|hume|ghar|dar|darr|police|shaam|aaye|gaye|kya|kyun|kaise)\b/i.test(sentText) ? 'hi' : 'en',
         }),
       });
 

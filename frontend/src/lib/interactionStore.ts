@@ -365,13 +365,28 @@ export function getCounselorCaseload(counselorId: string = 'usr-c-002'): Complet
  */
 export function getFullUserDossier(caseKey: string): CompleteUserDossier | null {
   const all = loadAllDossiers();
+  if (!caseKey) return all['NHAA/2026/UP/VNS/00492'] || Object.values(all)[0] || null;
+  
+  // Direct key match
   if (all[caseKey]) return all[caseKey];
+
+  const cleanKey = caseKey.trim().toLowerCase();
   for (const d of Object.values(all)) {
-    if (d.caseId === caseKey || d.caseNumber === caseKey || d.caseNumber.includes(caseKey)) {
+    const cId = (d.caseId || '').toLowerCase();
+    const cNum = (d.caseNumber || '').toLowerCase();
+    const cIdent = (d.anonymizedIdentifier || '').toLowerCase();
+    if (
+      cId === cleanKey || 
+      cNum === cleanKey || 
+      cIdent.includes(cleanKey) || 
+      cNum.includes(cleanKey) || 
+      cleanKey.includes(cId) ||
+      cleanKey.includes(cNum)
+    ) {
       return d;
     }
   }
-  return all['NHAA/2026/UP/VNS/00492'] || null;
+  return all['NHAA/2026/UP/VNS/00492'] || Object.values(all)[0] || null;
 }
 
 /**
@@ -389,7 +404,25 @@ export function saveInteractionTurn(turn: {
 }): InteractionTurn {
   const all = loadAllDossiers();
   const caseId = turn.caseId || 'NHAA/2026/UP/VNS/00492';
-  const targetDossier = all[caseId] || all['NHAA/2026/UP/VNS/00492'];
+  
+  let targetDossier = all[caseId];
+  if (!targetDossier) {
+    const cleanKey = caseId.trim().toLowerCase();
+    for (const d of Object.values(all)) {
+      if (
+        d.caseId.toLowerCase() === cleanKey ||
+        d.caseNumber.toLowerCase() === cleanKey ||
+        d.caseNumber.toLowerCase().includes(cleanKey) ||
+        cleanKey.includes(d.caseId.toLowerCase())
+      ) {
+        targetDossier = d;
+        break;
+      }
+    }
+  }
+  if (!targetDossier) {
+    targetDossier = all['NHAA/2026/UP/VNS/00492'] || Object.values(all)[0];
+  }
 
   const words = turn.userPrompt.trim().split(/\s+/);
   const isTerse = words.length <= 2 && turn.userPrompt.trim() !== '';
@@ -397,7 +430,7 @@ export function saveInteractionTurn(turn: {
 
   const newTurn: InteractionTurn = {
     id: `turn-${Date.now()}`,
-    caseId,
+    caseId: targetDossier.caseNumber,
     timestamp: 'Just now',
     channel: turn.channel || 'WEB_CHAT',
     userPrompt: turn.userPrompt,

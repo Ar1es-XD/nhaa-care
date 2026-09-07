@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import { CommandViewHeader } from '@/components/common/CommandViewHeader';
 import { getFullUserDossier, CompleteUserDossier } from '@/lib/interactionStore';
 
 export default function CounselorCaseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const rawId = (params?.id as string) || 'NHAA/2026/UP/VNS/00492';
   const decodedId = decodeURIComponent(rawId);
 
@@ -18,9 +20,15 @@ export default function CounselorCaseDetailPage() {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
 
   useEffect(() => {
+    if (user && user.role === 'victim') {
+      router.replace('/v/dashboard');
+      return;
+    }
     const loaded = getFullUserDossier(decodedId);
     setDossier(loaded);
-  }, [decodedId]);
+    setAiAnalysis(null);
+    setActiveTab('overview');
+  }, [decodedId, user, router]);
 
   if (!dossier) {
     return (

@@ -14,6 +14,13 @@ export const UserDossierModal: React.FC<UserDossierModalProps> = ({ dossier, isO
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (dossier) {
+      setAiAnalysis(null);
+      setActiveTab('overview');
+    }
+  }, [dossier?.caseNumber, isOpen]);
+
   if (!isOpen || !dossier) return null;
 
   const handleGenerateDossierAi = async () => {

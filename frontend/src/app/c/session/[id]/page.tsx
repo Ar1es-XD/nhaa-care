@@ -5,12 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { CommandViewHeader } from '@/components/common/CommandViewHeader';
+import { getFullUserDossier } from '@/lib/interactionStore';
 
 export default function CounselorSessionPage() {
   const params = useParams();
   const router = useRouter();
   const { user, saveDraftNote, getDraftNote } = useAuth();
-  const caseId = (params?.id as string) || 'alt-vns-9041';
+  const rawId = (params?.id as string) || 'alt-vns-9041';
+  const decodedId = decodeURIComponent(rawId);
+  const dossier = getFullUserDossier(decodedId);
+  const caseId = dossier?.caseId || decodedId;
 
   const [callActive, setCallActive] = useState(true);
   const [callDuration, setCallDuration] = useState(142); // in seconds
@@ -23,6 +27,12 @@ export default function CounselorSessionPage() {
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionDispatched, setActionDispatched] = useState(false);
+
+  useEffect(() => {
+    if (user && user.role === 'victim') {
+      router.replace('/v/dashboard');
+    }
+  }, [user, router]);
 
   // Restore saved draft note if previously interrupted
   useEffect(() => {
@@ -56,15 +66,16 @@ export default function CounselorSessionPage() {
   const handleGenerateAiInsight = async () => {
     setIsGeneratingAi(true);
     try {
+      const recentQuote = dossier?.interactionHistory[0]?.userPrompt || 'No recent transcript recorded';
       const res = await fetch('/api/ai/counselor-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          caseId: 'NHAA/2026/UP/VNS/00492',
-          ddsScore: 84,
-          velocity: 32,
-          verbatimQuote: 'kal shaam ko unke aadmi aaye the. Bole ki gawaahi wapas le le nahi toh ghar jala denge. Hum bahut dare hue hain.',
-          milestone: 'Witness Deposition in 9 days',
+          caseId: dossier?.caseNumber || 'NHAA/2026/UP/VNS/00492',
+          ddsScore: dossier?.currentDdsScore || 84,
+          velocity: dossier?.deltaVelocity14d || 32,
+          verbatimQuote: recentQuote,
+          milestone: dossier?.milestoneContext || 'Milestone Review',
         }),
       });
       const data = await res.json();
@@ -109,7 +120,7 @@ export default function CounselorSessionPage() {
                 {callActive ? 'Encrypted Tele-Counseling Call in Progress' : 'Call Concluded'}
               </span>
               <p className="text-[11px] text-[#4E5B72]">
-                Citizen: Priya Devi • Case NHAA/2026/UP/VNS/00492
+                Citizen: {dossier?.anonymizedIdentifier || 'Protected Citizen'} • Case {dossier?.caseNumber || decodedId}
               </p>
             </div>
           </div>

@@ -58,7 +58,7 @@ export default function LoginPage() {
     setStatusMessage(null);
 
     const targetRole: UserRole = portalPath === 'counselor' ? 'counselor' : 'victim';
-    const result = await signInWithEmail(email, password);
+    const result = await signInWithEmail(email, password, targetRole);
     setIsLoading(false);
 
     if (result.success) {

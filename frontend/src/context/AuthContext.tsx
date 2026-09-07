@@ -23,7 +23,7 @@ interface AuthContextType {
   hasCompletedBaseline: boolean;
   setBaselineCompleted: (completed: boolean) => void;
   signUpWithEmail: (email: string, password: string, name: string, role: UserRole, district: string) => Promise<{ success: boolean; message: string; requiresConfirmation?: boolean }>;
-  signInWithEmail: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  signInWithEmail: (email: string, password: string, desiredRole?: UserRole) => Promise<{ success: boolean; message: string }>;
   signInWithGoogle: (role?: UserRole) => Promise<{ success: boolean; message?: string }>;
   signInWithMeriPehchan: () => Promise<void>;
   signInWithPhoneOtp: (phone: string, otp: string, role?: UserRole) => Promise<boolean>;
@@ -236,14 +236,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signInWithEmail = async (
     email: string,
-    password: string
+    password: string,
+    desiredRole?: UserRole
   ): Promise<{ success: boolean; message: string }> => {
+    const resolvedRole = desiredRole || (email.toLowerCase().includes('counselor') ? 'counselor' : 'victim');
     if (!isConfigured) {
       const demoUser: AuthUser = {
-        id: `usr-${Date.now()}`,
+        id: resolvedRole === 'counselor' ? 'usr-c-002' : `usr-${Date.now()}`,
         email,
-        name: email.split('@')[0],
-        role: 'victim',
+        name: resolvedRole === 'counselor' ? 'Dr. Ananya Verma' : email.split('@')[0],
+        role: resolvedRole,
         district: 'Varanasi',
         provider: 'demo_sso',
       };
@@ -264,11 +266,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data.session?.user) {
         const meta = data.session.user.user_metadata || {};
+        const role = desiredRole || (meta.role as UserRole) || (email.toLowerCase().includes('counselor') ? 'counselor' : 'victim');
+
+        if (desiredRole && meta.role !== desiredRole) {
+          try {
+            await supabase.auth.updateUser({ data: { role: desiredRole } });
+          } catch (e) {}
+        }
+
         const authUser: AuthUser = {
           id: data.session.user.id,
           email: data.session.user.email || email,
-          name: meta.full_name || email.split('@')[0],
-          role: (meta.role as UserRole) || 'victim',
+          name: meta.full_name || (role === 'counselor' ? 'Dr. Ananya Verma' : email.split('@')[0]),
+          role,
           district: meta.district || 'Varanasi',
           provider: 'supabase_email',
         };
