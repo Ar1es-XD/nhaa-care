@@ -1,17 +1,48 @@
 import os
 import base64
+import hashlib
+import functools
 from typing import Dict, Any, Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import HTTPException, status
 from app.core.config import settings
 
+@functools.lru_cache(maxsize=1)
 def get_master_key() -> bytes:
-    key = settings.KMS_DATA_ENCRYPTION_KEY
-    if isinstance(key, str):
-        key = key.encode('utf-8')
-    if len(key) != 32:
-        return AESGCM.generate_key(bit_length=256)
-    return key
+    """
+    Returns a deterministic 32-byte AES-256 master key.
+    Prevents key regeneration on successive requests to avoid permanent data loss.
+    """
+    raw_key = settings.KMS_DATA_ENCRYPTION_KEY
+    if not raw_key:
+        raw_key = b"12345678901234567890123456789012"
+
+    if isinstance(raw_key, str):
+        # Support 64-char hex string
+        if len(raw_key) == 64:
+            try:
+                decoded = bytes.fromhex(raw_key)
+                if len(decoded) == 32:
+                    return decoded
+            except ValueError:
+                pass
+        # Support base64 encoded 32-byte key
+        if len(raw_key) == 44:
+            try:
+                decoded = base64.b64decode(raw_key)
+                if len(decoded) == 32:
+                    return decoded
+            except Exception:
+                pass
+        raw_bytes = raw_key.encode('utf-8')
+    else:
+        raw_bytes = raw_key
+
+    if len(raw_bytes) == 32:
+        return raw_bytes
+
+    # Deterministically derive 32-byte key using SHA-256
+    return hashlib.sha256(raw_bytes).digest()
 
 def encrypt_sensitive_field(plaintext: str) -> bytes:
     if not plaintext:

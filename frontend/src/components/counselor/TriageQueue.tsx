@@ -1,26 +1,51 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VerbatimQuoteCard } from './VerbatimQuoteCard';
 import { LongitudinalChart } from './LongitudinalChart';
 import { ClinicalVerificationModal } from './ClinicalVerificationModal';
+import { fetchTriageQueue, TriageAlert } from '@/lib/api';
+
+const DEFAULT_ALERTS = [
+  {
+    id: 'alt-9041',
+    caseNumber: 'NHAA/2026/UP/LKO/00492',
+    district: 'Lucknow, UP',
+    verbatim: 'kal shaam ko unke aadmi aaye the. Bole ki gawaahi wapas le le nahi toh ghar jala denge. Hum bahut dare hue hain, bache ro rahe hain.',
+    language: 'hi',
+    channel: 'IVRS_OUTBOUND',
+    tier: 'TIER_4_CRITICAL',
+    slaMinutes: 12
+  }
+];
 
 export const TriageQueue: React.FC = () => {
   const [activeModalId, setActiveModalId] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [clinicalAiSummary, setClinicalAiSummary] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState(DEFAULT_ALERTS);
+  const [isLive, setIsLive] = useState(false);
 
-  const alerts = [
-    {
-      id: 'alt-9041',
-      caseNumber: 'NHAA/2026/UP/LKO/00492',
-      district: 'Lucknow, UP',
-      verbatim: 'kal shaam ko unke aadmi aaye the. Bole ki gawaahi wapas le le nahi toh ghar jala denge. Hum bahut dare hue hain, bache ro rahe hain.',
-      language: 'hi',
-      channel: 'IVRS_OUTBOUND',
-      tier: 'TIER_4_CRITICAL',
-      slaMinutes: 12
-    }
-  ];
+  useEffect(() => {
+    fetchTriageQueue()
+      .then((data) => {
+        if (data && data.length > 0) {
+          setAlerts(data.map((item) => ({
+            id: item.alert_id,
+            caseNumber: item.case_number,
+            district: `${item.district_name}, ${item.district_code}`,
+            verbatim: item.verbatim_quote,
+            language: item.detected_language || 'hi',
+            channel: 'IVRS_OUTBOUND',
+            tier: item.alert_tier,
+            slaMinutes: item.sla_minutes_remaining,
+          })));
+          setIsLive(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend offline, using fallback alerts:', err);
+      });
+  }, []);
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -29,7 +54,16 @@ export const TriageQueue: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Clinical Crisis Triage Workspace</h1>
           <p className="text-xs text-slate-600">All alerts require licensed professional validation before physical-world deployment.</p>
         </div>
-        <span className="bg-red-100 text-red-800 font-bold px-3 py-1 rounded text-xs">1 Active Critical Alert</span>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <span className="bg-emerald-100 text-emerald-800 font-medium px-2.5 py-1 rounded text-xs border border-emerald-200">
+              ● Live API Connected
+            </span>
+          )}
+          <span className="bg-red-100 text-red-800 font-bold px-3 py-1 rounded text-xs">
+            {alerts.length} Active {alerts.length === 1 ? 'Alert' : 'Alerts'}
+          </span>
+        </div>
       </header>
 
       <div className="space-y-6">

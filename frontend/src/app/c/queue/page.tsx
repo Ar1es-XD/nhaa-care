@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { CommandViewHeader } from '@/components/common/CommandViewHeader';
 
@@ -60,10 +60,41 @@ const SAMPLE_CASES: CaseAlert[] = [
   },
 ];
 
+import { fetchTriageQueue } from '@/lib/api';
+
 export default function CounselorQueuePage() {
   const [tierFilter, setTierFilter] = useState<'ALL' | 'DISTRICT' | 'STATE'>('DISTRICT');
-  const primaryCase = SAMPLE_CASES[0];
-  const compactCases = SAMPLE_CASES.slice(1);
+  const [cases, setCases] = useState<CaseAlert[]>(SAMPLE_CASES);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    fetchTriageQueue()
+      .then((queue) => {
+        if (queue && queue.length > 0) {
+          const mapped: CaseAlert[] = queue.map((q) => ({
+            id: q.alert_id,
+            caseNumber: q.case_number,
+            district: `${q.district_name} District`,
+            tier: q.alert_tier === 'TIER_4_CRITICAL' ? 'HIGH_ESCALATION' : 'ELEVATED',
+            distressScore: q.alert_tier === 'TIER_4_CRITICAL' ? 88 : 64,
+            deltaVelocity: q.alert_tier === 'TIER_4_CRITICAL' ? 32 : 14,
+            whyExplanation: q.verbatim_quote,
+            verbatimSnippet: q.verbatim_quote,
+            milestoneContext: q.status === 'IN_TRIAGE' ? 'Witness Protection & Clinical Assessment' : 'Chargesheet Review',
+            lastContact: `${q.sla_minutes_remaining}m SLA remaining`,
+            assignedCounselor: 'Dr. Ananya Verma',
+          }));
+          setCases(mapped);
+          setIsLive(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend offline, using fallback cases:', err);
+      });
+  }, []);
+
+  const primaryCase = cases[0] || SAMPLE_CASES[0];
+  const compactCases = cases.slice(1);
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] flex flex-col justify-between text-[#23303A]">

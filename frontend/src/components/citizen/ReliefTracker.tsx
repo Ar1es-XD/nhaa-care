@@ -1,33 +1,70 @@
-import React from 'react';
+'use client';
+import React, { useState, useEffect } from 'react';
+import { fetchReliefStatus, ReliefStage } from '@/lib/api';
 
-export const ReliefTracker: React.FC = () => {
-  const steps = [
-    {
-      stage: "1. Early Relief Sanctuary",
-      hindi: "प्रारंभिक सहायता (25%)",
-      amount: "₹2,12,500",
-      status: "Safely Disbursed",
-      date: "Disbursed via DBT on 18 Aug 2026",
-      isComplete: true
-    },
-    {
-      stage: "2. Investigation & Support Stage",
-      hindi: "जांच एवं कानूनी सहायता (50%)",
-      amount: "₹4,25,000",
-      status: "In Expedited Review",
-      date: "Statutory Rule 12 window (District Welfare Office)",
-      isComplete: false,
-      isCurrent: true
-    },
-    {
-      stage: "3. Final Restorative Relief",
-      hindi: "अंतिम पुनर्वास सहायता (25%)",
-      amount: "₹2,12,500",
-      status: "Guaranteed upon Completion",
-      date: "Coordinated through DLSA & Court Counsel",
-      isComplete: false
-    }
-  ];
+const DEFAULT_STEPS = [
+  {
+    stage: "1. Early Relief Sanctuary",
+    hindi: "प्रारंभिक सहायता (25%)",
+    amount: "₹2,12,500",
+    status: "Safely Disbursed",
+    date: "Disbursed via DBT on 18 Aug 2026",
+    isComplete: true
+  },
+  {
+    stage: "2. Investigation & Support Stage",
+    hindi: "जांच एवं कानूनी सहायता (50%)",
+    amount: "₹4,25,000",
+    status: "In Expedited Review",
+    date: "Statutory Rule 12 window (District Welfare Office)",
+    isComplete: false,
+    isCurrent: true
+  },
+  {
+    stage: "3. Final Restorative Relief",
+    hindi: "अंतिम पुनर्वास सहायता (25%)",
+    amount: "₹2,12,500",
+    status: "Guaranteed upon Completion",
+    date: "Coordinated through DLSA & Court Counsel",
+    isComplete: false
+  }
+];
+
+export const ReliefTracker: React.FC<{ caseId?: string }> = ({ caseId = 'NHAA/2026/UP/LKO/00492' }) => {
+  const [steps, setSteps] = useState(DEFAULT_STEPS);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    fetchReliefStatus(caseId)
+      .then((data) => {
+        if (data && data.length > 0) {
+          const mapped = data.map((stage, idx) => {
+            const isComplete = stage.is_disbursed;
+            const isCurrent = !isComplete && idx === data.findIndex(s => !s.is_disbursed);
+            const titles: Record<string, { en: string; hi: string }> = {
+              FIR_STAGE_25PCT: { en: "1. Early Relief Sanctuary (FIR Stage)", hi: "प्रारंभिक सहायता (25%)" },
+              CHARGESHEET_STAGE_50PCT: { en: "2. Investigation & Support Stage", hi: "जांच एवं कानूनी सहायता (50%)" },
+              CONVICTION_STAGE_25PCT: { en: "3. Final Restorative Relief", hi: "अंतिम पुनर्वास सहायता (25%)" }
+            };
+            const meta = titles[stage.stage_name] || { en: stage.stage_name, hi: "सहायता चरण" };
+            return {
+              stage: meta.en,
+              hindi: meta.hi,
+              amount: `₹${stage.sanctioned_amount.toLocaleString('en-IN')}`,
+              status: isComplete ? "Safely Disbursed" : (stage.delay_days > 0 ? `Delayed by ${stage.delay_days}d` : "In Expedited Review"),
+              date: isComplete ? "Disbursed via DBT" : "Statutory Rule 12 window",
+              isComplete,
+              isCurrent,
+            };
+          });
+          setSteps(mapped);
+          setIsLive(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend relief API fallback:', err);
+      });
+  }, [caseId]);
 
   return (
     <div className="bg-white p-6 rounded-3xl border border-[#e8f0ec] shadow-sm space-y-4">

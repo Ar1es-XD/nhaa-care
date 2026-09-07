@@ -1,4 +1,5 @@
 import os
+from typing import Union
 from pydantic import BaseModel
 
 class Settings(BaseModel):
@@ -8,7 +9,7 @@ class Settings(BaseModel):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "meghraj-pilot")
     
     # KMS / Cryptographic Envelope Key
-    KMS_DATA_ENCRYPTION_KEY: bytes = os.getenv(
+    KMS_DATA_ENCRYPTION_KEY: Union[str, bytes] = os.getenv(
         "KMS_DATA_ENCRYPTION_KEY", 
         b"12345678901234567890123456789012" # 32-byte 256-bit AES master key
     )

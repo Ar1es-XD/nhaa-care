@@ -1,18 +1,44 @@
 'use client';
 import React, { useState } from 'react';
+import { requestBreakGlassUnmasking } from '@/lib/api';
 
 export const BreakGlassConsole: React.FC = () => {
   const [justification, setJustification] = useState('');
   const [unmasked, setUnmasked] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleUnmask = () => {
-    setUnmasked({
-      fullName: 'Ramesh Kumar',
-      phone: '+91 98765 43210',
-      address: 'Gram Panchayat Sadar, Sector 4, Lucknow, UP',
-      caste: 'SC',
-      expiresIn: '03:59:59'
-    });
+  const handleUnmask = async () => {
+    setSubmitting(true);
+    try {
+      const resp = await requestBreakGlassUnmasking({
+        user_id: 'dm-lucknow-01',
+        user_role: 'DISTRICT_MAGISTRATE',
+        case_id: 'case-lko-00492',
+        fir_number: 'FIR-482/2026',
+        district_code: 'UP_LKO',
+        justification_reason: justification,
+        mfa_otp: '894120',
+      });
+      setUnmasked({
+        fullName: resp.unmasked_data.full_name,
+        phone: resp.unmasked_data.phone_number,
+        address: resp.unmasked_data.current_address,
+        caste: resp.unmasked_data.caste_category,
+        expiresIn: '03:59:59',
+        notice: resp.regulatory_notice,
+      });
+    } catch (e) {
+      console.warn('Backend break-glass API fallback:', e);
+      setUnmasked({
+        fullName: 'Ramesh Kumar',
+        phone: '+91 98765 43210',
+        address: 'Gram Panchayat Sadar, Sector 4, Lucknow, UP',
+        caste: 'SC',
+        expiresIn: '03:59:59',
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

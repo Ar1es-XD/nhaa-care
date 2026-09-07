@@ -1,12 +1,35 @@
-import React from 'react';
+'use client';
+import React, { useState, useEffect } from 'react';
+import { fetchDistrictOverview, DistrictOverview } from '@/lib/api';
 
 export const DistrictHeatmap: React.FC = () => {
-  const districts = [
+  const [overview, setOverview] = useState<DistrictOverview | null>(null);
+  const [districts, setDistricts] = useState([
     { name: 'Lucknow', cases: 142, tier4: 2, rule12DelayPct: 12 },
     { name: 'Nagpur', cases: 98, tier4: 0, rule12DelayPct: 8 },
-    { name: 'Jaipur', cases: 114, tier4: 1, rule12DelayPct: 18 },
+    { name: 'Varanasi', cases: 114, tier4: 1, rule12DelayPct: 14 },
     { name: 'Belagavi', cases: 62, tier4: 0, rule12DelayPct: 5 }
-  ];
+  ]);
+
+  useEffect(() => {
+    fetchDistrictOverview()
+      .then((data) => {
+        if (data) {
+          setOverview(data);
+          if (data.hotspot_police_stations && data.hotspot_police_stations.length > 0) {
+            setDistricts([
+              { name: 'Lucknow', cases: data.active_cases_monitored, tier4: data.critical_alerts_in_triage, rule12DelayPct: 12 },
+              { name: 'Nagpur', cases: 98, tier4: 0, rule12DelayPct: 8 },
+              { name: 'Varanasi', cases: 114, tier4: 1, rule12DelayPct: 14 },
+              { name: 'Belagavi', cases: 62, tier4: 0, rule12DelayPct: 5 }
+            ]);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend overview API fallback:', err);
+      });
+  }, []);
 
   return (
     <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
