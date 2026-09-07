@@ -76,7 +76,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
         if (openaiRes.ok) {
           const data = await openaiRes.json();
           const summary = data?.choices?.[0]?.message?.content;
-          if (summary) {
+          if (summary && summary.trim().length > 60) {
             return NextResponse.json({
               summary,
               model: `openai-${OPENAI_MODEL}`,
@@ -91,8 +91,8 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
       }
     }
 
-    // 2. Try Gemini API if key configured
-    if (GEMINI_API_KEY) {
+    // 2. Try Gemini API if key configured and valid
+    if (GEMINI_API_KEY && !GEMINI_API_KEY.includes('AQ.')) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
         const geminiResponse = await fetch(geminiUrl, {
@@ -108,7 +108,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
             ],
             generationConfig: {
               temperature: 0.3,
-              maxOutputTokens: 500,
+              maxOutputTokens: 800,
             }
           }),
         });
@@ -116,7 +116,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
         if (geminiResponse.ok) {
           const data = await geminiResponse.json();
           const summary = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (summary) {
+          if (summary && summary.trim().length > 100) {
             return NextResponse.json({
               summary,
               model: `gemini-${GEMINI_MODEL}`,
