@@ -20,10 +20,12 @@ export default function LoginPage() {
 
   // Mode: 'signin' | 'signup' | 'otp'
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'otp'>('signin');
+  // Split portal path: 'citizen' | 'counselor'
+  const [portalPath, setPortalPath] = useState<'citizen' | 'counselor'>('citizen');
 
   // Sign in / Sign up form fields
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('priya.devi@sahay.gov.in');
+  const [password, setPassword] = useState('••••••••');
   const [fullName, setFullName] = useState('');
   const [district, setDistrict] = useState('Varanasi');
   const [selectedRole, setSelectedRole] = useState<UserRole>('victim');
@@ -55,13 +57,14 @@ export default function LoginPage() {
     setIsLoading(true);
     setStatusMessage(null);
 
+    const targetRole: UserRole = portalPath === 'counselor' ? 'counselor' : 'victim';
     const result = await signInWithEmail(email, password);
     setIsLoading(false);
 
     if (result.success) {
       setStatusMessage({ type: 'success', text: result.message });
       setTimeout(() => {
-        routeUserByRole(selectedRole);
+        routeUserByRole(targetRole);
       }, 500);
     } else {
       setStatusMessage({ type: 'error', text: result.message });
@@ -74,13 +77,14 @@ export default function LoginPage() {
     setIsLoading(true);
     setStatusMessage(null);
 
-    const result = await signUpWithEmail(email, password, fullName, selectedRole, district);
+    const targetRole: UserRole = portalPath === 'counselor' ? 'counselor' : 'victim';
+    const result = await signUpWithEmail(email, password, fullName, targetRole, district);
     setIsLoading(false);
 
     if (result.success) {
       setStatusMessage({ type: 'success', text: result.message });
       setTimeout(() => {
-        routeUserByRole(selectedRole);
+        routeUserByRole(targetRole);
       }, 800);
     } else {
       setStatusMessage({ type: 'error', text: result.message });
@@ -91,10 +95,11 @@ export default function LoginPage() {
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    const targetRole: UserRole = portalPath === 'counselor' ? 'counselor' : 'victim';
     localStorage.setItem('sahay_pending_identifier', identifier || '9876543210');
-    localStorage.setItem('sahay_pending_role', selectedRole);
+    localStorage.setItem('sahay_pending_role', targetRole);
     setTimeout(() => {
-      router.push(`/verify-otp?role=${selectedRole}`);
+      router.push(`/verify-otp?role=${targetRole}`);
     }, 400);
   };
 
@@ -102,12 +107,13 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setStatusMessage(null);
-    const result = await signInWithGoogle();
+    const targetRole: UserRole = portalPath === 'counselor' ? 'counselor' : 'victim';
+    const result = await signInWithGoogle(targetRole);
     if (!result.success && result.message) {
       setIsLoading(false);
       setStatusMessage({
         type: 'info',
-        text: `${result.message} (You can also sign in with Email or use Demo Access below.)`
+        text: `${result.message} (You can also sign in with Email or use Instant Persona below.)`
       });
     }
   };
@@ -147,17 +153,71 @@ export default function LoginPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           
           {/* Left Column: Interactive Auth Container */}
-          <div className="lg:col-span-6 max-w-md mx-auto w-full space-y-5">
+          <div className="lg:col-span-6 max-w-md mx-auto w-full space-y-4">
             
+            {/* Split 2-Path Portal Selection */}
+            <div className="space-y-1.5 pb-1">
+              <span className="text-[10px] font-bold text-[#4E5B72] tracking-wider uppercase block">
+                Choose Access Workspace / प्रवेश द्वार चुनें:
+              </span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPortalPath('citizen');
+                    setSelectedRole('victim');
+                    setEmail('priya.devi@sahay.gov.in');
+                    setStatusMessage(null);
+                  }}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    portalPath === 'citizen'
+                      ? 'bg-white border-[#6E8E7A] shadow-md ring-2 ring-[#6E8E7A]/25'
+                      : 'bg-[#F2EFE9] border-[#D9D4C8] hover:bg-white text-[#4E5B72]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">🌿</span>
+                    <span className="text-xs font-bold text-[#23303A]">Citizen Portal</span>
+                  </div>
+                  <span className="text-[10px] text-[#5B7A66] font-medium block">नागरिक सहायता कक्ष</span>
+                  <span className="text-[9px] text-[#4E5B72] block mt-1">Healing sanctuary & daily journal</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPortalPath('counselor');
+                    setSelectedRole('counselor');
+                    setEmail('dr.ananya.verma@counselor.sahay.gov.in');
+                    setStatusMessage(null);
+                  }}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    portalPath === 'counselor'
+                      ? 'bg-white border-[#1F4A48] shadow-md ring-2 ring-[#1F4A48]/25'
+                      : 'bg-[#F2EFE9] border-[#D9D4C8] hover:bg-white text-[#4E5B72]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">🧠</span>
+                    <span className="text-xs font-bold text-[#23303A]">Counselor Portal</span>
+                  </div>
+                  <span className="text-[10px] text-[#1F4A48] font-medium block">परामर्शदाता कक्ष</span>
+                  <span className="text-[9px] text-[#4E5B72] block mt-1">Caseload & mapped user data</span>
+                </button>
+              </div>
+            </div>
+
             {/* Header copy */}
             <div className="space-y-1">
               <h1 className="font-serif text-2xl md:text-3xl font-medium text-[#23303A]">
-                {authMode === 'signup' ? 'Create your safe account' : 'Welcome to your care space'}
+                {portalPath === 'citizen'
+                  ? (authMode === 'signup' ? 'Create your citizen account' : 'Welcome to your care space')
+                  : (authMode === 'signup' ? 'Register as Certified Counselor' : 'Counselor Clinical Workspace')}
               </h1>
               <p className="text-xs text-[#4E5B72]">
-                {authMode === 'signup'
+                {portalPath === 'citizen'
                   ? 'Zero-Knowledge encrypted under DPDP Act 2023. Real identities are sealed.'
-                  : 'Sign in with your email, password, or case reference.'}
+                  : 'Authorized triage workspace under SC/ST (PoA) Act Section 15A.'}
               </p>
             </div>
 
@@ -421,24 +481,34 @@ export default function LoginPage() {
             )}
 
             {/* National SSO & OAuth Providers */}
-            <div className="bg-white border border-[#D9D4C8] rounded-2xl p-5 space-y-3 shadow-sm">
+            <div className="bg-white border border-[#D9D4C8] rounded-2xl p-4 space-y-3 shadow-sm">
               <p className="text-[11px] font-medium text-[#4E5B72] text-center">
-                Or authenticate via National SSO / OAuth:
+                Or authenticate via Google OAuth or MeriPehchan:
               </p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
-                  className="py-2.5 px-3 border border-[#D9D4C8] rounded-xl text-xs text-[#23303A] hover:bg-[#F6F4EF] transition text-center font-medium flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 px-3 border border-[#D9D4C8] rounded-xl text-xs text-[#23303A] hover:bg-[#F6F4EF] transition font-medium flex items-center justify-center gap-2 bg-white shadow-sm"
                 >
-                  <span>Google Account</span>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>
+                    {portalPath === 'citizen'
+                      ? 'Sign in with Google (Citizen Space)'
+                      : 'Sign in with Google (Counselor Space)'}
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={signInWithMeriPehchan}
-                  className="py-2.5 px-3 bg-[#1F4A48] text-white rounded-xl text-xs hover:bg-[#153331] transition text-center font-medium"
+                  className="w-full py-2 px-3 bg-[#1F4A48] text-white rounded-xl text-xs hover:bg-[#153331] transition text-center font-medium flex items-center justify-center gap-1.5"
                 >
-                  MeriPehchan SSO
+                  <span>🇮🇳 MeriPehchan National SSO</span>
                 </button>
               </div>
             </div>

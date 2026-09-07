@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { saveInteractionTurn } from '@/lib/interactionStore';
 
 export const VoiceJournal: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -104,6 +105,21 @@ export const VoiceJournal: React.FC = () => {
         setGroundingTip(data.groundingTip);
         setIsSafetyEscalation(data.isSafetyEscalation);
         setModelUsed(data.model);
+
+        // Map to interaction store for counselor triage
+        try {
+          saveInteractionTurn({
+            caseId: 'NHAA/2026/UP/VNS/00492',
+            userPrompt: journalEntry,
+            aiResponse: data.response,
+            emotion: 'seeking peace and safety',
+            autonomicArousal: arousalLevel ? Math.round(arousalLevel * 100) : 65,
+            channel: 'VOICE_JOURNAL',
+            isSafetyEscalation: !!data.isSafetyEscalation,
+          });
+        } catch (e) {
+          console.warn('Failed to persist VoiceJournal turn:', e);
+        }
       } else {
         setAiResponse("सहारा आपकी बात सुन रहा है। गहरी सांस लें, आप अकेले नहीं हैं। हम आपके साथ हैं।");
       }
@@ -115,6 +131,21 @@ export const VoiceJournal: React.FC = () => {
   };
 
   const handleSave = () => {
+    if (journalEntry.trim()) {
+      try {
+        saveInteractionTurn({
+          caseId: 'NHAA/2026/UP/VNS/00492',
+          userPrompt: journalEntry,
+          aiResponse: aiResponse || 'Thought entry safely archived in Zero-Knowledge Vault.',
+          emotion: 'seeking peace and safety',
+          autonomicArousal: arousalLevel ? Math.round(arousalLevel * 100) : 62,
+          channel: 'VOICE_JOURNAL',
+          isSafetyEscalation,
+        });
+      } catch (e) {
+        console.warn('Failed to archive VoiceJournal:', e);
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 4000);
   };

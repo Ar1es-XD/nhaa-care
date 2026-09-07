@@ -69,7 +69,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
               { role: 'user', content: promptText },
             ],
             temperature: 0.3,
-            max_tokens: 500,
+            max_tokens: 1500,
           }),
         });
 
@@ -78,7 +78,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
           const summary = data?.choices?.[0]?.message?.content;
           if (summary && summary.trim().length > 60) {
             return NextResponse.json({
-              summary,
+              summary: summary.trim(),
               model: `openai-${OPENAI_MODEL}`,
             });
           }
@@ -108,7 +108,7 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
             ],
             generationConfig: {
               temperature: 0.3,
-              maxOutputTokens: 800,
+              maxOutputTokens: 1500,
             }
           }),
         });

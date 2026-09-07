@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { SahayQuietHeader } from '@/components/common/SahayQuietHeader';
+import { saveInteractionTurn } from '@/lib/interactionStore';
 
 interface Message {
   id: string;
@@ -94,10 +95,27 @@ function CheckInContent() {
       });
 
       const data = await res.json();
+      const replyText = data.response || "We hear you with care. You are not alone.";
+
+      // Persist turn to interaction store for counselor mapping
+      try {
+        saveInteractionTurn({
+          caseId: user?.caseNumber || 'NHAA/2026/UP/VNS/00492',
+          userPrompt: sentText,
+          aiResponse: replyText,
+          emotion: 'seeking quiet support',
+          channel: 'WEB_CHAT',
+          isSafetyEscalation: !!data.isSafetyEscalation,
+          autonomicArousal: data.isSafetyEscalation ? 86 : 64,
+        });
+      } catch (e) {
+        console.warn('Failed to persist interaction turn:', e);
+      }
+
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
-        text: data.response || "We hear you with care. You are not alone.",
+        text: replyText,
         isThreatHandoff: data.isSafetyEscalation,
       };
 

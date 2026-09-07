@@ -3,367 +3,397 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { CommandViewHeader } from '@/components/common/CommandViewHeader';
-
-interface CaseAlert {
-  id: string;
-  caseNumber: string;
-  district: string;
-  tier: 'HIGH_ESCALATION' | 'ELEVATED';
-  distressScore: number;
-  deltaVelocity: number;
-  whyExplanation: string;
-  verbatimSnippet: string;
-  milestoneContext: string;
-  lastContact: string;
-  assignedCounselor: string;
-}
-
-const SAMPLE_CASES: CaseAlert[] = [
-  {
-    id: 'alt-vns-9041',
-    caseNumber: 'NHAA/2026/UP/VNS/00492',
-    district: 'Varanasi District',
-    tier: 'HIGH_ESCALATION',
-    distressScore: 84,
-    deltaVelocity: 32,
-    whyExplanation: 'Acoustic voice tremor rise (+38%) following bail hearing notification; explicit intimidation disclosure during morning check-in.',
-    verbatimSnippet: 'kal shaam ko unke aadmi aaye the. Bole ki gawaahi wapas le le nahi toh ghar jala denge. Hum bahut dare hue hain, bache ro rahe hain.',
-    milestoneContext: 'Witness Deposition Hearing in 9 days',
-    lastContact: '18 minutes ago (IVRS Outbound)',
-    assignedCounselor: 'Dr. Ananya Verma',
-  },
-  {
-    id: 'alt-lko-8812',
-    caseNumber: 'NHAA/2026/UP/LKO/00381',
-    district: 'Lucknow District',
-    tier: 'ELEVATED',
-    distressScore: 61,
-    deltaVelocity: 14,
-    whyExplanation: 'Sentiment drop across consecutive check-ins; delayed Rule 12 Stage 1 relief disbursement.',
-    verbatimSnippet: 'muavza abhi tak nahi mila hai, advocate sahab se baat nahi ho pa rahi hai.',
-    milestoneContext: 'Chargesheet Filed (Compensation Pending)',
-    lastContact: '2 hours ago (App Check-in)',
-    assignedCounselor: 'Dr. R. K. Singh',
-  },
-  {
-    id: 'alt-prg-7719',
-    caseNumber: 'NHAA/2026/UP/PRG/00215',
-    district: 'Prayagraj District',
-    tier: 'ELEVATED',
-    distressScore: 56,
-    deltaVelocity: 9,
-    whyExplanation: 'Two missed daily micro-interactions following accused bail release.',
-    verbatimSnippet: 'Missed two check-ins; automated IVRS callback scheduled.',
-    milestoneContext: 'Accused Granted Conditional Bail',
-    lastContact: 'Yesterday, 19:40',
-    assignedCounselor: 'S. K. Maurya',
-  },
-];
-
-import { fetchTriageQueue } from '@/lib/api';
+import { getCounselorCaseload, CompleteUserDossier, getFullUserDossier } from '@/lib/interactionStore';
+import { UserDossierModal } from '@/components/counselor/UserDossierModal';
 
 export default function CounselorQueuePage() {
-  const [tierFilter, setTierFilter] = useState<'ALL' | 'DISTRICT' | 'STATE'>('DISTRICT');
-  const [cases, setCases] = useState<CaseAlert[]>(SAMPLE_CASES);
-  const [isLive, setIsLive] = useState(false);
+  const [tierFilter, setTierFilter] = useState<'DISTRICT' | 'ALL'>('DISTRICT');
+  const [caseload, setCaseload] = useState<CompleteUserDossier[]>([]);
+  const [selectedDossier, setSelectedDossier] = useState<CompleteUserDossier | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loadingAiCaseId, setLoadingAiCaseId] = useState<string | null>(null);
+  const [aiSummaries, setAiSummaries] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetchTriageQueue()
-      .then((queue) => {
-        if (queue && queue.length > 0) {
-          const mapped: CaseAlert[] = queue.map((q) => ({
-            id: q.alert_id,
-            caseNumber: q.case_number,
-            district: `${q.district_name} District`,
-            tier: q.alert_tier === 'TIER_4_CRITICAL' ? 'HIGH_ESCALATION' : 'ELEVATED',
-            distressScore: q.alert_tier === 'TIER_4_CRITICAL' ? 88 : 64,
-            deltaVelocity: q.alert_tier === 'TIER_4_CRITICAL' ? 32 : 14,
-            whyExplanation: q.verbatim_quote,
-            verbatimSnippet: q.verbatim_quote,
-            milestoneContext: q.status === 'IN_TRIAGE' ? 'Witness Protection & Clinical Assessment' : 'Chargesheet Review',
-            lastContact: `${q.sla_minutes_remaining}m SLA remaining`,
-            assignedCounselor: 'Dr. Ananya Verma',
-          }));
-          setCases(mapped);
-          setIsLive(true);
-        }
-      })
-      .catch((err) => {
-        console.warn('Backend offline, using fallback cases:', err);
-      });
+    // Load assigned caseload for Dr. Ananya Verma (Varanasi District)
+    const assigned = getCounselorCaseload('usr-c-002');
+    setCaseload(assigned);
   }, []);
 
-  const primaryCase = cases[0] || SAMPLE_CASES[0];
-  const compactCases = cases.slice(1);
+  const primaryCase = caseload[0];
+  const compactCases = caseload.slice(1);
+
+  const handleOpenDossier = (caseKey: string) => {
+    const dossier = getFullUserDossier(caseKey);
+    if (dossier) {
+      setSelectedDossier(dossier);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleGenerateAiInsight = async (c: CompleteUserDossier) => {
+    setLoadingAiCaseId(c.caseNumber);
+    try {
+      const recentQuote = c.interactionHistory[0]?.userPrompt || 'No recent transcript recorded';
+      const res = await fetch('/api/ai/counselor-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: c.caseNumber,
+          ddsScore: c.currentDdsScore,
+          velocity: c.deltaVelocity14d,
+          verbatimQuote: recentQuote,
+          milestone: c.milestoneContext,
+        }),
+      });
+      const data = await res.json();
+      setAiSummaries((prev) => ({
+        ...prev,
+        [c.caseNumber]: data.summary || 'Clinical assessment generated.',
+      }));
+    } catch (e) {
+      setAiSummaries((prev) => ({
+        ...prev,
+        [c.caseNumber]: 'Unable to connect to clinical copilot. Please proceed with manual triage.',
+      }));
+    } finally {
+      setLoadingAiCaseId(null);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#F6F4EF] flex flex-col justify-between text-[#23303A]">
+    <div className="min-h-screen bg-[#F6F4EF] flex flex-col justify-between text-[#23303A] font-sans">
       <CommandViewHeader />
 
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-8 space-y-8 flex-1">
         {/* Top Operational Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#D9D4C8] pb-4">
           <div>
-            <h1 className="font-serif text-2xl font-medium text-[#23303A] tracking-tight">
-              Clinical Priority Queue
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-serif text-2xl font-medium text-[#23303A] tracking-tight">
+                Clinical Priority Queue & Caseload
+              </h1>
+              <span className="text-xs bg-[#E8F0EC] text-[#2F5E3D] px-2.5 py-0.5 rounded-full font-bold border border-[#B7D0BF]">
+                Dr. Ananya Verma (Varanasi)
+              </span>
+            </div>
             <p className="text-xs text-[#4E5B72] mt-0.5">
-              Trauma-informed risk triaging under SC/ST (PoA) Act clinical protocol.
+              Mapped assigned citizens with real-time chat, voice journal telemetry, and full DB records.
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-[#4E5B72]">Scope:</span>
-            <div className="flex items-center bg-white border border-[#D9D4C8] rounded-lg p-1">
+            <span className="text-[#4E5B72]">Assigned Caseload:</span>
+            <div className="flex items-center bg-white border border-[#D9D4C8] rounded-lg p-1 font-medium">
               <button
                 onClick={() => setTierFilter('DISTRICT')}
                 className={`px-3 py-1 rounded transition ${
                   tierFilter === 'DISTRICT'
-                    ? 'bg-[#1F4A48] text-white font-medium'
+                    ? 'bg-[#1F4A48] text-white'
                     : 'text-[#4E5B72] hover:text-[#23303A]'
                 }`}
               >
-                Varanasi District (3)
+                My Cohort ({caseload.length} Citizens)
               </button>
               <button
-                onClick={() => setTierFilter('STATE')}
+                onClick={() => setTierFilter('ALL')}
                 className={`px-3 py-1 rounded transition ${
-                  tierFilter === 'STATE'
-                    ? 'bg-[#1F4A48] text-white font-medium'
+                  tierFilter === 'ALL'
+                    ? 'bg-[#1F4A48] text-white'
                     : 'text-[#4E5B72] hover:text-[#23303A]'
                 }`}
               >
-                Uttar Pradesh State
+                District Wide
               </button>
             </div>
           </div>
         </div>
 
-        {/* Asymmetric Layout: Left = Highest Escalation Hero Card + Queue; Right = Trend Geometry Map */}
+        {/* Asymmetric Layout: Left = Assigned Caseload; Right = Caseload Summary & Regional Map */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
           {/* Left Column (8 cols): Priority Cases */}
           <div className="lg:col-span-8 space-y-6">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[#23303A]">
-                Requires Immediate Human Attention
+                Requires Immediate Clinical Action
               </span>
-              <span className="text-[11px] text-[#8C4A3A] bg-[#F7ECE9] px-2.5 py-0.5 rounded border border-[#E5CDC6] font-medium">
-                1 High Escalation
+              <span className="text-[11px] text-[#8C4A3A] bg-[#F7ECE9] px-2.5 py-0.5 rounded border border-[#E5CDC6] font-bold">
+                1 Critical • 2 Elevated Cases Mapped
               </span>
             </div>
 
-            {/* ENLARGED HERO CASE CARD (Hierarchy visible across the room!) */}
-            <div className="bg-white border-2 border-[#8C4A3A]/40 rounded-xl p-6 shadow-sm space-y-5 animate-soft-settle">
-              {/* Card Header */}
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#D9D4C8] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-[#23303A]">
-                      {primaryCase.caseNumber}
-                    </span>
-                    <span className="text-xs text-[#8C4A3A] bg-[#F7ECE9] px-2 py-0.5 rounded font-medium border border-[#E5CDC6]">
-                      High Escalation Risk
+            {/* HERO CASE CARD (Priya Devi - NHAA/2026/UP/VNS/00492) */}
+            {primaryCase && (
+              <div className="bg-white border-2 border-[#8C4A3A]/40 rounded-2xl p-6 shadow-sm space-y-5 animate-soft-settle">
+                
+                {/* Card Header */}
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#D9D4C8] pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-[#23303A]">
+                        {primaryCase.caseNumber}
+                      </span>
+                      <span className="text-xs text-[#8C4A3A] bg-[#F7ECE9] px-2 py-0.5 rounded font-bold border border-[#E5CDC6]">
+                        Critical Escalation
+                      </span>
+                      <span className="text-xs text-[#5B7A66] bg-[#E8F0EC] px-2 py-0.5 rounded font-medium border border-[#B7D0BF]">
+                        {primaryCase.anonymizedIdentifier}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#4E5B72] mt-1">
+                      {primaryCase.district} • Last Active: {primaryCase.lastActiveTimestamp} • Milestone: {primaryCase.milestoneContext}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="flex items-baseline gap-1.5 justify-end">
+                      <span className="text-xs text-[#4E5B72]">Distress Index</span>
+                      <span className="text-2xl font-bold text-[#8C4A3A]">
+                        {primaryCase.currentDdsScore}
+                      </span>
+                      <span className="text-xs text-[#4E5B72]">/100</span>
+                    </div>
+                    <span className="text-[11px] text-[#8C4A3A] font-medium block">
+                      Δ 14-Day Velocity: +{primaryCase.deltaVelocity14d}
                     </span>
                   </div>
-                  <p className="text-xs text-[#4E5B72] mt-1">
-                    {primaryCase.district} • Contact: {primaryCase.lastContact}
+                </div>
+
+                {/* Behavioral Telemetry Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 bg-[#FAF8F5] border border-[#EBE7DF] rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-[#4E5B72] uppercase block">Autonomic Arousal / Tremor</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-full bg-[#EBE7DF] h-2 rounded-full overflow-hidden">
+                        <div className="bg-[#8C4A3A] h-full rounded-full" style={{ width: `${primaryCase.averageArousal}%` }} />
+                      </div>
+                      <span className="font-bold text-[#8C4A3A]">{primaryCase.averageArousal}%</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-[#FAF8F5] border border-[#EBE7DF] rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-[#4E5B72] uppercase block">Guardedness Indicator</span>
+                    <span className={`text-xs font-bold block ${primaryCase.guardednessAlert ? 'text-[#8C4A3A]' : 'text-[#2F5E3D]'}`}>
+                      {primaryCase.guardednessAlert ? '⚠️ Terse / High Vigilance' : '✓ Uninhibited Disclosure'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-[#FAF8F5] border border-[#EBE7DF] rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-[#4E5B72] uppercase block">Section 15A Patrol Status</span>
+                    <span className="text-xs font-bold text-[#1F4A48] block">
+                      {primaryCase.witnessProtection.lastPatrolCheckin}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live Mapped Citizen Interaction Signal */}
+                <div className="p-4 bg-[#F6F4EF] border-l-4 border-[#8C4A3A] rounded-r-xl space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-[#4E5B72]">
+                    <span className="font-bold text-[#8C4A3A] flex items-center gap-1.5">
+                      <span>💬</span>
+                      <span>Live Mapped Citizen Interaction ({primaryCase.interactionHistory[0]?.channel || 'WEB_CHAT'})</span>
+                    </span>
+                    <span>{primaryCase.interactionHistory[0]?.timestamp || 'Recent'}</span>
+                  </div>
+                  <p className="text-xs italic text-[#23303A] leading-relaxed">
+                    "{primaryCase.interactionHistory[0]?.userPrompt || 'No recent transcript'}"
                   </p>
                 </div>
 
-                <div className="text-right">
-                  <div className="flex items-baseline gap-1.5 justify-end">
-                    <span className="text-xs text-[#4E5B72]">Distress Index</span>
-                    <span className="text-2xl font-bold text-[#8C4A3A]">
-                      {primaryCase.distressScore}
-                    </span>
-                    <span className="text-xs text-[#4E5B72]">/100</span>
+                {/* AI Clinical Insight Box if generated */}
+                {aiSummaries[primaryCase.caseNumber] && (
+                  <div className="p-4 bg-[#F8FBF9] border border-[#C6DFD4] rounded-xl text-xs leading-relaxed whitespace-pre-line text-[#23303A] font-medium animate-soft-settle">
+                    <div className="flex items-center gap-1.5 font-bold text-[#1F4A48] mb-1">
+                      <span>🧠</span>
+                      <span>OpenAI Clinical Copilot Analysis:</span>
+                    </div>
+                    {aiSummaries[primaryCase.caseNumber]}
                   </div>
-                  <span className="text-[11px] text-[#8C4A3A] font-medium block">
-                    Δ Velocity: +{primaryCase.deltaVelocity} (14 days)
-                  </span>
-                </div>
-              </div>
+                )}
 
-              {/* Explainable AI "Why" Affordance */}
-              <div className="p-3.5 bg-[#F8F3E8] border border-[#E8DFC8] rounded-lg space-y-1">
-                <span className="text-[11px] font-semibold text-[#B98A2B] block">
-                  Why this case was elevated (Explainable AI):
-                </span>
-                <p className="text-xs text-[#23303A] leading-relaxed">
-                  {primaryCase.whyExplanation}
-                </p>
-              </div>
-
-              {/* Raw Verbatim Signal (Mandatory Human Review) */}
-              <div className="p-4 bg-[#F6F4EF] border-l-4 border-[#8C4A3A] rounded-r-lg space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] text-[#4E5B72]">
-                  <span className="font-semibold text-[#8C4A3A]">Raw Verbatim Signal (Unsummarized)</span>
-                  <span>Hindi Audio IVRS</span>
-                </div>
-                <p className="text-xs italic text-[#23303A] leading-relaxed">
-                  "{primaryCase.verbatimSnippet}"
-                </p>
-              </div>
-
-              {/* Single Hero Animated Distress Trend Line (Draws in once, ~900ms ease-out) */}
-              <div className="space-y-1.5 pt-2">
-                <div className="flex items-center justify-between text-[11px] text-[#4E5B72]">
-                  <span>14-Day Longitudinal Distress Trend</span>
-                  <span>Trigger: {primaryCase.milestoneContext}</span>
-                </div>
-                <div className="w-full h-16 bg-[#F6F4EF] border border-[#D9D4C8] rounded-lg p-2 flex items-end">
-                  <svg className="w-full h-12 overflow-visible" viewBox="0 0 400 48">
-                    <path
-                      d="M 0 42 Q 60 40, 120 38 T 240 32 T 320 22 T 400 6"
-                      fill="none"
-                      stroke="#8C4A3A"
-                      strokeWidth="2.5"
-                      strokeDasharray="1000"
-                      strokeDashoffset="0"
-                      className="animate-draw-line"
-                    />
-                    <circle cx="400" cy="6" r="4" fill="#8C4A3A" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <span className="text-xs text-[#4E5B72]">
-                  Assigned Officer: <strong>{primaryCase.assignedCounselor}</strong>
-                </span>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/c/case/${primaryCase.id}`}
-                    className="px-4 py-2 bg-[#F6F4EF] hover:bg-[#EAE6DD] text-[#23303A] text-xs font-medium rounded-lg border border-[#D9D4C8] transition"
+                {/* Card Action Controls */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#EBE7DF]">
+                  <button
+                    onClick={() => handleOpenDossier(primaryCase.caseNumber)}
+                    className="px-4 py-2.5 bg-[#FAF8F5] hover:bg-[#EBE7DF] text-[#1F4A48] text-xs font-bold rounded-xl border border-[#D9D4C8] transition flex items-center gap-1.5 shadow-sm"
                   >
-                    View Case File
-                  </Link>
-                  <Link
-                    href={`/c/session/${primaryCase.id}`}
-                    className="px-5 py-2 bg-[#1F4A48] hover:bg-[#153331] text-white text-xs font-medium rounded-lg transition shadow-sm"
-                  >
-                    Initiate Clinical Call
-                  </Link>
+                    <span>📁</span>
+                    <span>Inspect Complete DB Dossier (All Records)</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleGenerateAiInsight(primaryCase)}
+                      disabled={loadingAiCaseId === primaryCase.caseNumber}
+                      className="px-3.5 py-2.5 bg-[#FAF3E0] hover:bg-[#F3E5C8] text-[#8C6B1F] border border-[#E6D4A8] text-xs font-bold rounded-xl transition shadow-sm disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <span>🧠</span>
+                      <span>{loadingAiCaseId === primaryCase.caseNumber ? 'Analyzing with OpenAI...' : 'AI Clinical Brief'}</span>
+                    </button>
+                    
+                    <Link
+                      href={`/c/session/${primaryCase.caseId}`}
+                      className="px-5 py-2.5 bg-[#1F4A48] hover:bg-[#153331] text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1"
+                    >
+                      <span>📞</span>
+                      <span>Start Session</span>
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* COMPACT LIST ROWS (Remaining lower-priority cases) */}
+            {/* REMAINING ASSIGNED CASES IN CASELOD */}
             <div className="space-y-3 pt-4">
               <span className="text-xs font-semibold text-[#23303A] block">
-                Pending Active Cases (Queue)
+                Assigned Caseload Cohort ({compactCases.length} Additional Citizens)
               </span>
 
               {compactCases.map((c) => (
                 <div
-                  key={c.id}
-                  className="bg-white border border-[#D9D4C8] hover:border-[#B98A2B] rounded-lg p-4 flex flex-wrap items-center justify-between gap-4 transition shadow-sm"
+                  key={c.caseId}
+                  className="bg-white border border-[#D9D4C8] hover:border-[#1F4A48] rounded-2xl p-5 space-y-3 transition shadow-sm"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#23303A]">{c.caseNumber}</span>
-                      <span className="text-[10px] text-[#B98A2B] bg-[#F8F3E8] px-2 py-0.5 rounded border border-[#E8DFC8] font-medium">
-                        Elevated
-                      </span>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[#23303A]">{c.caseNumber}</span>
+                        <span className="text-[10px] text-[#B98A2B] bg-[#FAF3E0] px-2 py-0.5 rounded font-bold border border-[#E6D4A8]">
+                          Elevated Risk
+                        </span>
+                        <span className="text-[10px] text-[#4E5B72] bg-[#F2EFE9] px-2 py-0.5 rounded font-medium">
+                          {c.anonymizedIdentifier}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#4E5B72]">
+                        {c.district} • Milestone: {c.milestoneContext} • Active: {c.lastActiveTimestamp}
+                      </p>
                     </div>
-                    <p className="text-xs text-[#4E5B72]">{c.district} • Context: {c.milestoneContext}</p>
-                    <p className="text-[11px] text-[#23303A] max-w-xl truncate">
-                      <strong>Signal:</strong> {c.whyExplanation}
+
+                    <div className="text-right">
+                      <span className="text-lg font-bold text-[#B98A2B]">{c.currentDdsScore}</span>
+                      <span className="text-xs text-[#4E5B72]">/100</span>
+                      <span className="text-[10px] text-[#4E5B72] block">Δ +{c.deltaVelocity14d} (14d)</span>
+                    </div>
+                  </div>
+
+                  {/* Verbatim mapped signal without truncation */}
+                  <div className="p-3 bg-[#FAF8F5] border-l-3 border-[#B98A2B] rounded-r-xl space-y-1 text-xs">
+                    <span className="text-[10px] font-bold text-[#8C6B1F] block">Recent Interaction Signal:</span>
+                    <p className="italic text-[#23303A] leading-relaxed">
+                      "{c.interactionHistory[0]?.userPrompt || 'Routine daily check-in completed without distress escalation.'}"
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-4 text-right">
-                    <div>
-                      <span className="text-lg font-bold text-[#B98A2B]">{c.distressScore}</span>
-                      <span className="text-[10px] text-[#4E5B72] block">Δ +{c.deltaVelocity}</span>
+                  {/* AI Clinical brief if generated */}
+                  {aiSummaries[c.caseNumber] && (
+                    <div className="p-3 bg-[#F8FBF9] border border-[#C6DFD4] rounded-xl text-xs leading-relaxed whitespace-pre-line text-[#23303A] font-medium">
+                      {aiSummaries[c.caseNumber]}
                     </div>
-                    <Link
-                      href={`/c/case/${c.id}`}
-                      className="px-3 py-1.5 bg-[#F6F4EF] hover:bg-[#EAE6DD] text-[#23303A] text-xs font-medium rounded border border-[#D9D4C8] transition"
+                  )}
+
+                  {/* Controls */}
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      onClick={() => handleOpenDossier(c.caseNumber)}
+                      className="text-xs font-bold text-[#1F4A48] hover:underline flex items-center gap-1"
                     >
-                      Inspect
-                    </Link>
+                      <span>📁</span>
+                      <span>Open Full DB Dossier</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleGenerateAiInsight(c)}
+                        disabled={loadingAiCaseId === c.caseNumber}
+                        className="px-3 py-1.5 bg-[#FAF3E0] hover:bg-[#F3E5C8] text-[#8C6B1F] border border-[#E6D4A8] text-xs font-bold rounded-lg transition disabled:opacity-50"
+                      >
+                        {loadingAiCaseId === c.caseNumber ? 'Analyzing...' : '🧠 AI Insight'}
+                      </button>
+                      <Link
+                        href={`/c/case/${c.caseId}`}
+                        className="px-3 py-1.5 bg-[#1F4A48] hover:bg-[#153331] text-white text-xs font-bold rounded-lg transition"
+                      >
+                        Case File
+                      </Link>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Right Column (4 cols): Regional Geographic Distribution & Milestone Triggers */}
+          {/* Right Column (4 cols): Caseload Statistics & Protocol */}
           <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white border border-[#D9D4C8] rounded-xl p-5 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#23303A]">
-                  Spatial Trend Distribution
+            
+            {/* Caseload Capacity Card */}
+            <div className="bg-white border border-[#D9D4C8] rounded-2xl p-5 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-3">
+                <span className="text-xs font-bold text-[#23303A]">
+                  Caseload Distribution
                 </span>
-                <span className="text-[11px] text-[#4E5B72]">
-                  Sized by Trend Velocity
+                <span className="text-[11px] bg-[#E8F0EC] text-[#2F5E3D] px-2 py-0.5 rounded font-bold">
+                  3 Active Mapped
                 </span>
               </div>
 
-              {/* Geographic Region Clusters */}
               <div className="space-y-3 text-xs">
-                <div className="p-3 bg-[#F6F4EF] rounded-lg border border-[#D9D4C8] space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-[#23303A]">Varanasi Rural (Pindra)</span>
-                    <span className="text-[11px] text-[#8C4A3A] font-bold">1 High Escalation</span>
-                  </div>
-                  <div className="w-full bg-[#D9D4C8] h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-[#8C4A3A] h-full w-[84%]" />
-                  </div>
-                  <span className="text-[10px] text-[#4E5B72] block">
-                    Witness deposition scheduled in 9 days
-                  </span>
+                <div className="flex justify-between items-center py-1 border-b border-[#EBE7DF]">
+                  <span className="text-[#4E5B72]">Assigned Counselor:</span>
+                  <span className="font-bold text-[#1F4A48]">Dr. Ananya Verma</span>
                 </div>
-
-                <div className="p-3 bg-[#F6F4EF] rounded-lg border border-[#D9D4C8] space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-[#23303A]">Lucknow Sadar</span>
-                    <span className="text-[11px] text-[#B98A2B] font-bold">1 Elevated</span>
-                  </div>
-                  <div className="w-full bg-[#D9D4C8] h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-[#B98A2B] h-full w-[61%]" />
-                  </div>
-                  <span className="text-[10px] text-[#4E5B72] block">
-                    Relief disbursement delay: 18 days
-                  </span>
+                <div className="flex justify-between items-center py-1 border-b border-[#EBE7DF]">
+                  <span className="text-[#4E5B72]">Jurisdiction:</span>
+                  <span className="font-semibold">Varanasi District (UP)</span>
                 </div>
-
-                <div className="p-3 bg-[#F6F4EF] rounded-lg border border-[#D9D4C8] space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-[#23303A]">Prayagraj (Koraon)</span>
-                    <span className="text-[11px] text-[#B98A2B] font-bold">1 Elevated</span>
-                  </div>
-                  <div className="w-full bg-[#D9D4C8] h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-[#B98A2B] h-full w-[56%]" />
-                  </div>
-                  <span className="text-[10px] text-[#4E5B72] block">
-                    Accused bail notification sent
-                  </span>
+                <div className="flex justify-between items-center py-1 border-b border-[#EBE7DF]">
+                  <span className="text-[#4E5B72]">Max Clinical Capacity:</span>
+                  <span className="font-semibold">5 Cases (Optimal: 3)</span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-[#4E5B72]">Avg Arousal Telemetry:</span>
+                  <span className="font-bold text-[#8C4A3A]">61.6%</span>
                 </div>
               </div>
             </div>
 
-            {/* Closed-Loop Verification Status */}
-            <div className="bg-white border border-[#D9D4C8] rounded-xl p-5 space-y-3 shadow-sm text-xs">
-              <span className="font-semibold text-[#23303A] block">
-                Closed-Loop Verification Mandate
+            {/* Statutory Witness Protection Protocol */}
+            <div className="bg-white border border-[#D9D4C8] rounded-2xl p-5 space-y-3 shadow-sm text-xs">
+              <span className="font-bold text-[#1F4A48] block text-sm flex items-center gap-1.5">
+                <span>🛡️</span>
+                <span>Section 15A Clinical Mandate</span>
               </span>
               <p className="text-[#4E5B72] leading-relaxed">
-                Under Section 5.3 of clinical protocol, AI predictions never trigger physical police dispatch autonomously. A certified human counsellor must complete a verification call.
+                Counselors are authorized to submit expedited protection assessments to the District Nodal Officer & SP for:
               </p>
-              <div className="pt-2 border-t border-[#D9D4C8] flex justify-between text-[11px]">
-                <span className="text-[#4E5B72]">SLA Window:</span>
-                <span className="font-bold text-[#8C4A3A]">12 Minutes Remaining</span>
-              </div>
+              <ul className="space-y-1.5 text-[#23303A]">
+                <li className="flex items-center gap-1.5">
+                  <span>✓</span> Daily police PCR patrol checks at witness residence.
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <span>✓</span> Armed police escort for court appearances.
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <span>✓</span> Rule 12(4) emergency interim relief acceleration.
+                </li>
+              </ul>
             </div>
+
           </div>
+
         </div>
       </main>
 
-      <footer className="text-center text-[11px] text-[#4E5B72] py-4 border-t border-[#D9D4C8]">
-        NHAA-Care Command View • Authorized Clinical Personnel Only
+      {/* Complete User DB Dossier Modal */}
+      <UserDossierModal
+        dossier={selectedDossier}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+
+      <footer className="border-t border-[#D9D4C8] px-4 py-3 bg-[#F6F4EF] text-center text-[11px] text-[#4E5B72]">
+        Sahaara (सहारा) Clinical Portal • Licensed Counselor Workspace • DPDP Act 2023 & Section 15A
       </footer>
     </div>
   );

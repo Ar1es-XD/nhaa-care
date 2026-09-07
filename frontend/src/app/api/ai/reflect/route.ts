@@ -45,6 +45,28 @@ function generateDynamicEmpatheticResponse(
   return `We hear your words with deep presence and empathy: "${snippet}".\n\nIt is completely understandable to feel ${emotion || 'overwhelmed'} given everything you are holding right now. Navigating these moments takes immense resilience, and it is okay to pause and give yourself grace.\n\nTake a slow, deep breath in... and gently let it go. Sahaara is here as your secure, compassionate sanctuary. You do not have to carry all of this on your own.`;
 }
 
+function ensureCompleteResponse(text: string, isHindi: boolean = false): string {
+  if (!text) return '';
+  const trimmed = text.trim();
+  const validPunctuation = ['.', '!', '?', '।', '"', '”', ')', '\n'];
+  const lastChar = trimmed.slice(-1);
+  if (validPunctuation.includes(lastChar)) {
+    return trimmed;
+  }
+  const lastPeriod = Math.max(
+    trimmed.lastIndexOf('।'),
+    trimmed.lastIndexOf('. '),
+    trimmed.lastIndexOf('! '),
+    trimmed.lastIndexOf('? ')
+  );
+  if (lastPeriod > 40) {
+    return trimmed.substring(0, lastPeriod + 1).trim();
+  }
+  return isHindi 
+    ? `${trimmed}। सहारा हर कदम पर आपके साथ है।`
+    : `${trimmed}. Sahaara stands beside you with care.`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -59,8 +81,9 @@ export async function POST(req: NextRequest) {
 
     const lower = prompt.toLowerCase();
     const isSafetyEscalation = THREAT_PATTERNS.some((kw) => lower.includes(kw));
+    const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt);
 
-    // 1. Try OpenAI API first if key is configured
+    // 1. Try OpenAI API first if key is configured (Primary Engine)
     if (OPENAI_API_KEY) {
       try {
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -79,14 +102,15 @@ export async function POST(req: NextRequest) {
               }
             ],
             temperature: 0.7,
-            max_tokens: 450,
+            max_tokens: 1500,
           }),
         });
 
         if (openaiRes.ok) {
           const data = await openaiRes.json();
-          const responseText = data?.choices?.[0]?.message?.content;
-          if (responseText) {
+          let responseText = data?.choices?.[0]?.message?.content;
+          if (responseText && responseText.trim().length > 20) {
+            responseText = ensureCompleteResponse(responseText, isHindi);
             return NextResponse.json({
               response: responseText,
               groundingTip: isSafetyEscalation 
@@ -115,14 +139,15 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: `${SAFETY_PROMPT}\n\n${userMessage}` }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 500 }
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1500 }
           }),
         });
 
         if (geminiResponse.ok) {
           const data = await geminiResponse.json();
-          const generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (generatedText) {
+          let generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (generatedText && generatedText.trim().length > 30) {
+            generatedText = ensureCompleteResponse(generatedText, isHindi);
             return NextResponse.json({
               response: generatedText,
               groundingTip: isSafetyEscalation 

@@ -24,7 +24,7 @@ interface AuthContextType {
   setBaselineCompleted: (completed: boolean) => void;
   signUpWithEmail: (email: string, password: string, name: string, role: UserRole, district: string) => Promise<{ success: boolean; message: string; requiresConfirmation?: boolean }>;
   signInWithEmail: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
-  signInWithGoogle: () => Promise<{ success: boolean; message?: string }>;
+  signInWithGoogle: (role?: UserRole) => Promise<{ success: boolean; message?: string }>;
   signInWithMeriPehchan: () => Promise<void>;
   signInWithPhoneOtp: (phone: string, otp: string, role?: UserRole) => Promise<boolean>;
   signInAsRole: (role: UserRole) => void;
@@ -283,16 +283,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async (): Promise<{ success: boolean; message?: string }> => {
+  const signInWithGoogle = async (role: UserRole = 'victim'): Promise<{ success: boolean; message?: string }> => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sahay_pending_oauth_role', role);
+    }
     if (isConfigured) {
       try {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: `${window.location.origin}/auth/callback`,
+            redirectTo: `${window.location.origin}/auth/callback?target_role=${role}`,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
           },
         });
         if (error) {
+          console.warn('Supabase Google OAuth initialization notice:', error.message);
           return { success: false, message: error.message };
         }
         return { success: true };
@@ -300,7 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: err?.message || 'Failed to connect to Google OAuth.' };
       }
     } else {
-      signInAsRole('victim');
+      signInAsRole(role);
       return { success: true };
     }
   };

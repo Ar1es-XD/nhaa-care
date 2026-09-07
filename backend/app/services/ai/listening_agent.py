@@ -49,7 +49,7 @@ def generate_openai_reflection(transcript: str, language: str = "hi") -> Optiona
                 {"role": "user", "content": f"Citizen shared: {transcript}"}
             ],
             "temperature": 0.7,
-            "max_tokens": 300
+            "max_tokens": 1000
         }).encode("utf-8")
         
         req = urllib.request.Request(

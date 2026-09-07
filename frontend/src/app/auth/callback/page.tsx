@@ -28,27 +28,46 @@ function CallbackContent() {
           return;
         }
 
-        // 3. Extract role metadata
-        const role = (session.user.user_metadata?.role as UserRole) || 'victim';
+        // 3. Extract role metadata from OAuth flow or stored state
+        const urlRole = searchParams.get('target_role') as UserRole;
+        const storedRole = (typeof window !== 'undefined' ? localStorage.getItem('sahay_pending_oauth_role') : null) as UserRole;
+        const role = urlRole || storedRole || (session.user.user_metadata?.role as UserRole) || 'victim';
         const hasBaseline = localStorage.getItem('sahay_baseline_completed') === 'true';
 
-        setStatus('Credentials authenticated. Establishing safe workspace...');
+        // Update Supabase user profile metadata with resolved role
+        try {
+          await supabase.auth.updateUser({ data: { role } });
+        } catch (e) {
+          // Non-blocking
+        }
+
+        // Cache authenticated user with resolved role
+        const authUser = {
+          id: session.user.id,
+          email: session.user.email || 'user@sahay.gov.in',
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || (role === 'counselor' ? 'Dr. Ananya Verma' : 'Priya Devi'),
+          role,
+          district: session.user.user_metadata?.district || 'Varanasi',
+          provider: 'supabase_google',
+        };
+        localStorage.setItem('sahay_auth_user', JSON.stringify(authUser));
+        localStorage.removeItem('sahay_pending_oauth_role');
+
+        setStatus(`Authenticated as ${role === 'counselor' ? 'Certified Counselor' : 'Citizen'}. Redirecting to your workspace...`);
 
         setTimeout(() => {
-          if (role === 'victim') {
+          if (role === 'counselor') {
+            router.replace('/c/queue');
+          } else if (role === 'admin' || role === 'nodal_officer') {
+            router.replace('/admin/alerts');
+          } else {
             if (!hasBaseline) {
               router.replace('/onboarding/baseline');
             } else {
               router.replace('/v/dashboard');
             }
-          } else if (role === 'counselor') {
-            router.replace('/c/queue');
-          } else if (role === 'admin' || role === 'nodal_officer') {
-            router.replace('/admin/alerts');
-          } else {
-            router.replace('/v/dashboard');
           }
-        }, 800);
+        }, 600);
       } catch (err) {
         console.error('Callback error:', err);
         router.replace('/login');
