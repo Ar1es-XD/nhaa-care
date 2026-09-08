@@ -89,6 +89,7 @@ function CheckInContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: sentText,
+          history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
           emotion: 'seeking quiet support',
           language: /[\u0900-\u097F]/.test(sentText) || /\b(hai|hain|nahi|nahin|hum|hume|ghar|dar|darr|police|shaam|aaye|gaye|kya|kyun|kaise)\b/i.test(sentText) ? 'hi' : 'en',
         }),

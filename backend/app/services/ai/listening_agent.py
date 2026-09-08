@@ -72,28 +72,46 @@ def generate_openai_reflection(transcript: str, language: str = "hi") -> Optiona
 
 def generate_gemini_reflection(transcript: str, language: str = "hi") -> Optional[str]:
     """
-    Calls Google Gemini 3.6 Flash to generate trauma-informed, empathetic responses.
+    Calls Google Gemini models to generate trauma-informed, empathetic responses.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return None
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
-        prompt = (
-            "You are Sahaara AI, an empathetic, soothing mental health listening companion for victims under the SC/ST framework in India. "
-            f"Respond warmly and with dignity in {'Hindi' if language == 'hi' else 'English'}. Never give clinical diagnoses. Keep it gentle and grounding. "
-            f"Citizen shared: {transcript}"
-        )
-        data = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(req, context=ctx, timeout=6) as res:
-            res_json = json.loads(res.read().decode("utf-8"))
-            return res_json["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        return None
+    
+    candidate_models = [
+        os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash"
+    ]
+    seen = set()
+    models = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+
+    prompt = (
+        "You are Sahaara AI, an empathetic, soothing mental health listening companion for victims under the SC/ST framework in India. "
+        f"Respond warmly and with dignity in {'Hindi' if language == 'hi' else 'English'}. Never give clinical diagnoses. Keep it gentle and grounding. "
+        f"Citizen shared: {transcript}"
+    )
+    data = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    for model in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, context=ctx, timeout=8) as res:
+                res_json = json.loads(res.read().decode("utf-8"))
+                text = res_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text")
+                if text and len(text.strip()) > 15:
+                    return text.strip()
+        except Exception:
+            continue
+    return None
 
 def generate_dynamic_reflection(transcript: str, language: str = "hi") -> str:
     """

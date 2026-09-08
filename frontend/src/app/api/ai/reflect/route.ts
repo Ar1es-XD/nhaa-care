@@ -3,7 +3,18 @@ import { NextRequest, NextResponse } from 'next/server';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-3.6-flash';
+const GEMINI_MODEL = process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-3.5-flash';
+
+const GEMINI_CANDIDATE_MODELS = [
+  process.env.NEXT_PUBLIC_GEMINI_MODEL,
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+].filter((m, idx, self): m is string => Boolean(m) && self.indexOf(m) === idx);
 
 const SAFETY_PROMPT = `You are Sahaara (सहारा) AI, a gentle, trauma-informed mental wellness listening companion in India. 
 Your role is to support citizens, complainants, and families who are experiencing stress, anxiety, or hardship under the SC/ST framework.
@@ -79,7 +90,7 @@ function ensureCompleteResponse(text: string, isHindi: boolean = false): string 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, emotion, language = 'hi' } = body;
+    const { prompt, emotion, language = 'hi', history } = body;
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json(
@@ -92,9 +103,34 @@ export async function POST(req: NextRequest) {
     const isSafetyEscalation = THREAT_PATTERNS.some((kw) => lower.includes(kw));
     const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt) || HINGLISH_PATTERNS.test(prompt);
 
+    // Format conversational context if previous turns are provided
+    let conversationContext = '';
+    if (Array.isArray(history) && history.length > 0) {
+      conversationContext = '\nRecent check-in conversation turns:\n' + history
+        .filter((h: any) => h && h.text)
+        .map((h: any) => `${h.sender === 'ai' ? 'Sahaara AI' : 'Citizen'}: ${h.text}`)
+        .join('\n') + '\n';
+    }
+
     // 1. Try OpenAI API first if key is configured (Primary Engine)
     if (OPENAI_API_KEY) {
       try {
+        const messages: any[] = [{ role: 'system', content: SAFETY_PROMPT }];
+        if (Array.isArray(history) && history.length > 0) {
+          for (const item of history.slice(-6)) {
+            if (item?.text) {
+              messages.push({
+                role: item.sender === 'ai' ? 'assistant' : 'user',
+                content: item.text,
+              });
+            }
+          }
+        }
+        messages.push({
+          role: 'user',
+          content: `Citizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`,
+        });
+
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -103,13 +139,7 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             model: OPENAI_MODEL,
-            messages: [
-              { role: 'system', content: SAFETY_PROMPT },
-              { 
-                role: 'user', 
-                content: `Citizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].\nCitizen's personal entry:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.` 
-              }
-            ],
+            messages,
             temperature: 0.7,
             max_tokens: 1500,
           }),
@@ -138,37 +168,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Try Google Gemini API if key is configured
-    if (GEMINI_API_KEY && !GEMINI_API_KEY.includes('AQ.')) {
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        const userMessage = `User emotion: [${emotion || 'seeking calm'}]. Language: [${language}].\nUser reflection:\n"${prompt}"`;
-        const geminiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `${SAFETY_PROMPT}\n\n${userMessage}` }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1500 }
-          }),
-        });
+    // 2. Try Google Gemini API with candidate model fallback
+    if (GEMINI_API_KEY) {
+      const userMessage = `Citizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].${conversationContext}\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`;
 
-        if (geminiResponse.ok) {
-          const data = await geminiResponse.json();
-          let generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (generatedText && generatedText.trim().length > 30) {
-            generatedText = ensureCompleteResponse(generatedText, isHindi);
-            return NextResponse.json({
-              response: generatedText,
-              groundingTip: isSafetyEscalation 
-                ? "Emergency Support: Connect immediately with counselor on 14566."
-                : "Grounding exercise: Inhale slowly for 4 seconds, feel grounded, exhale softly.",
-              isSafetyEscalation,
-              model: GEMINI_MODEL,
-            });
+      for (const model of GEMINI_CANDIDATE_MODELS) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+          const geminiResponse = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${SAFETY_PROMPT}\n\n${userMessage}` }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 1500 }
+            }),
+          });
+
+          if (geminiResponse.ok) {
+            const data = await geminiResponse.json();
+            let generatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (generatedText && generatedText.trim().length > 20) {
+              generatedText = ensureCompleteResponse(generatedText, isHindi);
+              return NextResponse.json({
+                response: generatedText,
+                groundingTip: isSafetyEscalation 
+                  ? "Emergency Support: Connect immediately with counselor on 14566."
+                  : "Grounding exercise: Inhale slowly for 4 seconds, feel grounded, exhale softly.",
+                isSafetyEscalation,
+                model: `gemini-${model}`,
+              });
+            }
+          } else {
+            const errText = await geminiResponse.text().catch(() => '');
+            console.warn(`Gemini model ${model} returned non-OK: ${geminiResponse.status} - ${errText.substring(0, 120)}`);
           }
+        } catch (err) {
+          console.warn(`Gemini model ${model} fetch failed:`, err);
         }
-      } catch (err) {
-        console.warn('Gemini request failed:', err);
       }
     }
 

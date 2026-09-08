@@ -3,7 +3,18 @@ import { NextRequest, NextResponse } from 'next/server';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-3.6-flash';
+const GEMINI_MODEL = process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-3.5-flash';
+
+const GEMINI_CANDIDATE_MODELS = [
+  process.env.NEXT_PUBLIC_GEMINI_MODEL,
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.6-flash',
+].filter((m, idx, self): m is string => Boolean(m) && self.indexOf(m) === idx);
 
 const COUNSELOR_PROMPT = `You are Sahaara Clinical Copilot, assisting licensed mental health counselors and nodal officers under the SC/ST (Prevention of Atrocities) framework in India.
 Analyze the provided longitudinal signals, milestone context, and citizen quotes.
@@ -91,43 +102,45 @@ Generate a structured 3-bullet clinical triage analysis note for the attending c
       }
     }
 
-    // 2. Try Gemini API if key configured and valid
-    if (GEMINI_API_KEY && !GEMINI_API_KEY.includes('AQ.')) {
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-        const geminiResponse = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: `${COUNSELOR_PROMPT}\n\n${promptText}` }
-                ]
+    // 2. Try Gemini API with candidate models fallback
+    if (GEMINI_API_KEY) {
+      for (const model of GEMINI_CANDIDATE_MODELS) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+          const geminiResponse = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: `${COUNSELOR_PROMPT}\n\n${promptText}` }
+                  ]
+                }
+              ],
+              generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 1500,
               }
-            ],
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 1500,
-            }
-          }),
-        });
+            }),
+          });
 
-        if (geminiResponse.ok) {
-          const data = await geminiResponse.json();
-          const summary = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (summary && summary.trim().length > 100) {
-            return NextResponse.json({
-              summary,
-              model: `gemini-${GEMINI_MODEL}`,
-            });
+          if (geminiResponse.ok) {
+            const data = await geminiResponse.json();
+            const summary = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (summary && summary.trim().length > 60) {
+              return NextResponse.json({
+                summary,
+                model: `gemini-${model}`,
+              });
+            }
+          } else {
+            const errText = await geminiResponse.text().catch(() => '');
+            console.warn(`Gemini model ${model} returned non-OK: ${geminiResponse.status} - ${errText.substring(0, 120)}`);
           }
-        } else {
-          const errText = await geminiResponse.text().catch(() => '');
-          console.warn('Gemini API Error, falling back:', errText);
+        } catch (err) {
+          console.warn(`Gemini model ${model} fetch error, trying next:`, err);
         }
-      } catch (err) {
-        console.warn('Gemini API fetch error, falling back:', err);
       }
     }
 
