@@ -34,12 +34,12 @@ export default function VictimProfilePage() {
           <div className="flex items-center gap-4">
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
-              alt="Priya Devi"
+              alt={user?.name || "Citizen"}
               className="w-16 h-16 rounded-full object-cover border-2 border-[#D9D4C8] shadow-sm"
             />
             <div>
               <span className="font-serif text-lg font-medium text-[#23303A] block">
-                {user?.name || 'Priya Devi'}
+                {user?.name || 'Citizen'}
               </span>
               <span className="text-xs text-[#4E5B72] block">
                 Case {user?.caseNumber || 'NHAA/2026/UP/00492'} • Varanasi

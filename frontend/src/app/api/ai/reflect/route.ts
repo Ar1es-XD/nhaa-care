@@ -25,7 +25,8 @@ CRITICAL INSTRUCTIONS:
 3. Language: Match the language of the user (Hindi, Hinglish, or English). If they write in Hindi, reply in comforting, easy-to-understand Hindi or Hinglish.
 4. Grounding: Provide practical, calming guidance (like deep breathing, feeling grounded, or taking one moment at a time).
 5. Threats / Intimidation / Self-Harm: If the user explicitly mentions physical threats, court intimidation, or thoughts of self-harm, prioritize their physical safety and remind them with warmth that our 24x7 counselors are standing by on helpline 14566.
-6. Keep the response caring, empathetic, personalized to their input, and soothing (around 2 to 3 paragraphs).`;
+6. User Identity: Always address the user by their actual name provided in the request context. NEVER address them as "Priya" unless their actual name is specified as Priya. If no name is provided, address them warmly without using any name.
+7. Keep the response caring, empathetic, personalized to their input, and soothing (around 2 to 3 paragraphs).`;
 
 const THREAT_PATTERNS = [
   "threat", "intimidat", "kill", "burn", "withdraw", "compromise", 
@@ -90,7 +91,7 @@ function ensureCompleteResponse(text: string, isHindi: boolean = false): string 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, emotion, language = 'hi', history } = body;
+    const { prompt, emotion, language = 'hi', history, userName, name } = body;
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json(
@@ -102,6 +103,12 @@ export async function POST(req: NextRequest) {
     const lower = prompt.toLowerCase();
     const isSafetyEscalation = THREAT_PATTERNS.some((kw) => lower.includes(kw));
     const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(prompt) || HINGLISH_PATTERNS.test(prompt);
+
+    const citizenName = (userName || name || '').trim();
+    const firstName = citizenName ? citizenName.split(' ')[0] : '';
+    const nameInstruction = firstName 
+      ? `Citizen's Name: "${firstName}". Address the citizen warmly as "${firstName}". NEVER call them Priya unless their actual name is Priya.` 
+      : `Citizen's Name: Not provided. Address them warmly and gently without assuming any name like Priya.`;
 
     // Format conversational context if previous turns are provided
     let conversationContext = '';
@@ -128,7 +135,7 @@ export async function POST(req: NextRequest) {
         }
         messages.push({
           role: 'user',
-          content: `Citizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`,
+          content: `${nameInstruction}\nCitizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`,
         });
 
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -170,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Try Google Gemini API with candidate model fallback
     if (GEMINI_API_KEY) {
-      const userMessage = `Citizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].${conversationContext}\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`;
+      const userMessage = `${nameInstruction}\nCitizen emotional state: [${emotion || 'seeking calm'}]. Preferred Language: [${language}].${conversationContext}\nCitizen's latest message:\n"${prompt}"\n\nPlease respond empathetically as Sahaara companion.`;
 
       for (const model of GEMINI_CANDIDATE_MODELS) {
         try {

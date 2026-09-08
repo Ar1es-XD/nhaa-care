@@ -32,7 +32,7 @@ export default function VictimDashboardPage() {
                 🌿 Safe Sanctuary • सहारा
               </span>
               <h1 className="font-serif text-xl md:text-2xl font-medium tracking-tight text-[#F6F4EF]">
-                Good morning, {user?.name || 'Priya'}
+                Good morning, {user?.name ? user.name.split(' ')[0] : 'friend'}
               </h1>
               <p className="text-xs text-[#D9D4C8]">
                 Someone is watching out for you today.
@@ -41,7 +41,7 @@ export default function VictimDashboardPage() {
 
             <img
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80"
-              alt="Priya Devi"
+              alt={user?.name || "Citizen"}
               className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-sm flex-shrink-0"
             />
           </div>

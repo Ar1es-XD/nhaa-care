@@ -18,14 +18,48 @@ interface Message {
 function CheckInContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'msg-init-1',
-      sender: 'ai',
-      text: "Hello Priya. We are here with you. How have you been feeling since yesterday?",
-      hindiText: "नमस्ते प्रिया। हम आपके साथ हैं। कल से अब तक आप कैसा महसूस कर रही हैं?",
+
+  const getGreeting = (rawName?: string) => {
+    const fn = rawName?.trim() ? rawName.trim().split(' ')[0] : '';
+    return {
+      text: fn
+        ? `Hello ${fn}. We are here with you. How have you been feeling since yesterday?`
+        : "Hello. We are here with you. How have you been feeling since yesterday?",
+      hindiText: fn
+        ? `नमस्ते ${fn}। हम आपके साथ हैं। कल से अब तक आप कैसा महसूस कर रहे हैं?`
+        : "नमस्ते। हम आपके साथ हैं। कल से अब तक आप कैसा महसूस कर रहे हैं?",
+    };
+  };
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const greeting = getGreeting(user?.name);
+    return [
+      {
+        id: 'msg-init-1',
+        sender: 'ai',
+        text: greeting.text,
+        hindiText: greeting.hindiText,
+      }
+    ];
+  });
+
+  useEffect(() => {
+    if (user?.name) {
+      const greeting = getGreeting(user.name);
+      setMessages((prev) => {
+        if (prev.length === 1 && prev[0].id === 'msg-init-1') {
+          return [
+            {
+              ...prev[0],
+              text: greeting.text,
+              hindiText: greeting.hindiText,
+            }
+          ];
+        }
+        return prev;
+      });
     }
-  ]);
+  }, [user?.name]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -89,6 +123,7 @@ function CheckInContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: sentText,
+          userName: user?.name || '',
           history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
           emotion: 'seeking quiet support',
           language: /[\u0900-\u097F]/.test(sentText) || /\b(hai|hain|nahi|nahin|hum|hume|ghar|dar|darr|police|shaam|aaye|gaye|kya|kyun|kaise)\b/i.test(sentText) ? 'hi' : 'en',
